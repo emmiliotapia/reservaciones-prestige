@@ -1,0 +1,46 @@
+services:
+  reservaciones-db:
+    image: postgres:15-alpine
+    container_name: reservaciones_db
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-reservaciones_secret}
+      POSTGRES_DB: casino_reservations
+    ports:
+      - "${DB_PORT:-5442}:5432"
+    volumes:
+      - postgres_reservaciones_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d casino_reservations"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  reservaciones-backend:
+    build: ./backend
+    container_name: reservaciones_backend
+    restart: always
+    environment:
+      POSTGRES_SERVER: reservaciones-db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-reservaciones_secret}
+      POSTGRES_DB: casino_reservations
+      POSTGRES_PORT: 5432
+    ports:
+      - "${BACKEND_PORT:-8102}:8000"
+    depends_on:
+      reservaciones-db:
+        condition: service_healthy
+
+  reservaciones-frontend:
+    build: ./frontend
+    container_name: reservaciones_frontend
+    restart: always
+    ports:
+      - "${FRONTEND_PORT:-3102}:80"
+    depends_on:
+      - reservaciones-backend
+
+volumes:
+  postgres_reservaciones_data:

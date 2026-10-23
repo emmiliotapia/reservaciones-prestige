@@ -15,10 +15,16 @@ import {
   Plus,
   History,
   Check,
-  ChevronDown
+  ChevronDown,
+  Lock,
+  ShieldCheck,
+  KeyRound
 } from 'lucide-react';
 import { qzService } from '../services/qzService';
 import EventsModal from './Modals/EventsModal';
+
+// NIP de Autorización del Gerente
+const MANAGER_PIN = '2026';
 
 // Lista de eventos iniciales
 const INITIAL_EVENTS = [
@@ -87,6 +93,12 @@ export default function TableManager() {
   const [isPrinting, setIsPrinting] = useState(false);
   const [notification, setNotification] = useState(null);
 
+  // Modal de Autorización del Gerente (NIP 2026)
+  const [isPinModalOpen, setIsPinModalOpen] = useState(false);
+  const [pinInput, setPinInput] = useState('');
+  const [pinError, setPinError] = useState(false);
+  const [pendingAction, setPendingAction] = useState(null); // { type: 'release' | 'unmerge', id: string, name: string }
+
   const notify = (msg, type = 'info') => {
     setNotification({ msg, type });
     setTimeout(() => setNotification(null), 3500);
@@ -116,107 +128,32 @@ export default function TableManager() {
     notify(`Nuevo evento creado: ${newEvent.name}`, 'success');
   };
 
-  // Mesa objetivo cercana para fusión magnética
-  const [magneticTargetId, setMagneticTargetId] = useState(null);
-  const MERGE_PROXIMITY_THRESHOLD = 8; // Distancia porcentual de solapamiento para unir mesas
 
-  // Detección en tiempo real durante el arrastre (OnDrag)
-  const handleDrag = (event, info, table) => {
-    if (!containerRef.current) return;
-    const rect = containerRef.current.getBoundingClientRect();
-    const deltaXPercent = (info.offset.x / rect.width) * 100;
-    const deltaYPercent = (info.offset.y / rect.height) * 100;
-    const currentX = Math.max(5, Math.min(95, table.x + deltaXPercent));
-    const currentY = Math.max(5, Math.min(95, table.y + deltaYPercent));
 
-    // Solo mesas disponibles e individuales pueden auto-fusionarse
-    if (table.group_id || table.status !== 'disponible') {
-      setMagneticTargetId(null);
-      return;
-    }
-
-    let closest = null;
-    let minD = Infinity;
-
-    tables.forEach((other) => {
-      if (other.id !== table.id && !other.group_id && other.status === 'disponible') {
-        const dx = (other.x - currentX) * 0.8;
-        const dy = other.y - currentY;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < MERGE_PROXIMITY_THRESHOLD && dist < minD) {
-          minD = dist;
-          closest = other.id;
-        }
-      }
-    });
-
-    setMagneticTargetId(closest);
-  };
-
-  // Drag End: coloca la mesa exactamente en el centro donde ves el cuadro en pantalla
+  // Drag End: calcula posición relativa al plano sin conflicto de transforms
   const handleDragEnd = (event, info, table) => {
     if (!containerRef.current) return;
     const containerRect = containerRef.current.getBoundingClientRect();
 
-    // Obtener el centro visual real del cuadro que se está arrastrando en la pantalla
-    let targetCenterX = info.point.x;
-    let targetCenterY = info.point.y;
-
-    // Si el elemento arrastrado tiene getBoundingClientRect en el DOM, usamos su centro físico exacto
+    // Obtener la posición visual final del elemento arrastrado
     const targetEl = event.target?.closest('.cursor-grab') || event.target;
-    if (targetEl && targetEl.getBoundingClientRect) {
-      const elRect = targetEl.getBoundingClientRect();
-      targetCenterX = elRect.left + elRect.width / 2;
-      targetCenterY = elRect.top + elRect.height / 2;
-    }
+    if (!targetEl || !targetEl.getBoundingClientRect) return;
 
-    const rawX = ((targetCenterX - containerRect.left) / containerRect.width) * 100;
-    const rawY = ((targetCenterY - containerRect.top) / containerRect.height) * 100;
+    const tableRect = targetEl.getBoundingClientRect();
 
-    // Limitar suavemente dentro de los bordes del plano (4% a 96%)
-    const newXPercent = Math.round(Math.max(4, Math.min(96, rawX)) * 10) / 10;
-    const newYPercent = Math.round(Math.max(4, Math.min(96, rawY)) * 10) / 10;
+    // Centro del elemento arrastrado en coordenadas de pantalla
+    const tableCenterX = tableRect.left + tableRect.width / 2;
+    const tableCenterY = tableRect.top + tableRect.height / 2;
 
-    // Verificar si se soltó directamente sobre otra mesa disponible para FUSIÓN
-    if (!table.group_id && table.status === 'disponible') {
-      let targetTable = null;
-      let minDistance = Infinity;
+    // Convertir el centro a porcentaje relativo al contenedor padre
+    const rawX = ((tableCenterX - containerRect.left) / containerRect.width) * 100;
+    const rawY = ((tableCenterY - containerRect.top) / containerRect.height) * 100;
 
-      tables.forEach((other) => {
-        if (other.id !== table.id && !other.group_id && other.status === 'disponible') {
-          const dx = (other.x - newXPercent) * 0.8;
-          const dy = other.y - newYPercent;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          if (dist < MERGE_PROXIMITY_THRESHOLD && dist < minDistance) {
-            minDistance = dist;
-            targetTable = other;
-          }
-        }
-      });
+    // Limitar suavemente dentro de los bordes del plano (5% a 95%)
+    const newXPercent = Math.round(Math.max(5, Math.min(95, rawX)) * 10) / 10;
+    const newYPercent = Math.round(Math.max(5, Math.min(95, rawY)) * 10) / 10;
 
-      if (targetTable) {
-        // Fusión: la mesa doble toma la posición de la mesa objetivo
-        const newGroupId = `grp-${Date.now()}`;
-        const finalX = targetTable.x;
-        const finalY = targetTable.y;
-
-        setTables((prev) =>
-          prev.map((t) =>
-            t.id === table.id || t.id === targetTable.id
-              ? { ...t, group_id: newGroupId, x: finalX, y: finalY, orientation: 'horizontal' }
-              : t
-          )
-        );
-
-        setMagneticTargetId(null);
-        notify(`¡Mesas ${table.id} y ${targetTable.id} unidas! Mesa Doble creada`, 'success');
-        return;
-      }
-    }
-
-    setMagneticTargetId(null);
-
-    // Guardar exactamente en la posición donde ves el cuadro
+    // Actualizar el estado con la nueva coordenada
     setTables((prev) =>
       prev.map((t) => {
         if (t.id === table.id) {
@@ -309,8 +246,53 @@ export default function TableManager() {
     notify('Orientación de mesa doble rotada', 'info');
   };
 
-  // Dividir Mesa Doble
-  const handleUnmerge = (groupId) => {
+  // Solicitar autorización para Dividir Mesa Doble
+  const requestUnmerge = (groupId) => {
+    setPendingAction({
+      type: 'unmerge',
+      id: groupId,
+      title: 'Desvincular / Dividir Mesa Doble'
+    });
+    setPinInput('');
+    setPinError(false);
+    setIsPinModalOpen(true);
+  };
+
+  // Solicitar autorización para Liberar / Limpiar Mesa
+  const requestReleaseTable = (tableId) => {
+    setPendingAction({
+      type: 'release',
+      id: tableId,
+      title: `Liberar / Limpiar Mesa ${tableId}`
+    });
+    setPinInput('');
+    setPinError(false);
+    setIsPinModalOpen(true);
+  };
+
+  // Verificación del NIP del Gerente (2026)
+  const handleVerifyPin = (e) => {
+    e.preventDefault();
+    if (pinInput.trim() !== MANAGER_PIN) {
+      setPinError(true);
+      notify('NIP de Gerente incorrecto. Autorización denegada.', 'error');
+      return;
+    }
+
+    if (pendingAction?.type === 'release') {
+      executeReleaseTable(pendingAction.id);
+    } else if (pendingAction?.type === 'unmerge') {
+      executeUnmerge(pendingAction.id);
+    }
+
+    setIsPinModalOpen(false);
+    setPendingAction(null);
+    setPinInput('');
+    setPinError(false);
+  };
+
+  // Ejecución Autorizada: Dividir Mesa Doble
+  const executeUnmerge = (groupId) => {
     setTables((prev) => {
       const merged = prev.filter((t) => t.group_id === groupId);
       if (merged.length < 2) return prev;
@@ -331,7 +313,7 @@ export default function TableManager() {
         return t;
       });
     });
-    notify('Mesa doble dividida en 2 mesas individuales de 4 personas', 'info');
+    notify('Autorización concedida. Mesa doble dividida con éxito.', 'success');
   };
 
   // Guardar Reserva desde el Panel Lateral Derecho
@@ -381,8 +363,8 @@ export default function TableManager() {
     }
   };
 
-  // Liberar Mesa desde el Panel Lateral
-  const handleReleaseTable = (tableId) => {
+  // Ejecución Autorizada: Liberar / Limpiar Mesa
+  const executeReleaseTable = (tableId) => {
     setTables((prev) =>
       prev.map((t) =>
         t.id === tableId || (t.group_id && t.group_id === sidebarTable?.group_id)
@@ -392,7 +374,7 @@ export default function TableManager() {
     );
     setIsSidebarOpen(false);
     setSidebarTable(null);
-    notify(`Mesa ${tableId} liberada y disponible`, 'success');
+    notify(`Autorización de Gerente concedida: Mesa ${tableId} liberada y disponible`, 'success');
   };
 
   // Agrupamiento
@@ -543,9 +525,12 @@ export default function TableManager() {
               phone: groupTables[0].phone
             };
 
+            const widthPercent = isHorizontal ? 18 : 9;
+            const heightPercent = isHorizontal ? 7.2 : 14.4;
+
             return (
               <motion.div
-                key={`${groupId}-${avgX}-${avgY}-${orientation}`}
+                key={`${groupId}-${avgX}-${avgY}`}
                 drag
                 dragConstraints={containerRef}
                 dragElastic={0}
@@ -555,15 +540,16 @@ export default function TableManager() {
                 onClick={() => handleTableClick(groupTables[0])}
                 style={{
                   position: 'absolute',
-                  left: `${avgX}%`,
-                  top: `${avgY}%`,
-                  width: isHorizontal ? '18%' : '9%',
-                  height: isHorizontal ? '7.2%' : '14.4%'
+                  left: `${avgX - widthPercent / 2}%`,
+                  top: `${avgY - heightPercent / 2}%`,
+                  width: `${widthPercent}%`,
+                  height: `${heightPercent}%`,
+                  x: 0,
+                  y: 0
                 }}
                 className={`
-                  cursor-grab active:cursor-grabbing rounded-lg border-2 transition-colors
+                  cursor-grab active:cursor-grabbing rounded-lg border-2 transition-colors select-none
                   flex flex-col items-center justify-between p-1 z-20 group backdrop-blur-sm
-                  transform -translate-x-1/2 -translate-y-1/2
                   ${getStatusStyle(status)}
                 `}
                 title={`Mesa Doble (${labels}) - Capacidad 6 personas. Clic para ver en el panel derecho`}
@@ -599,10 +585,10 @@ export default function TableManager() {
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleUnmerge(groupId);
+                      requestUnmerge(groupId);
                     }}
                     className="p-1 rounded-full bg-white border border-slate-300 shadow-sm text-rose-600 hover:bg-rose-50 transition-all"
-                    title="Dividir en 2 mesas de 4 personas"
+                    title="Dividir en 2 mesas de 4 personas (Requiere Autorización)"
                   >
                     <Unlink className="w-3.5 h-3.5" />
                   </button>
@@ -611,11 +597,10 @@ export default function TableManager() {
             );
           })}
 
-          {/* Mesas Cuadradas Individuales (4 Personas) */}
+          {/* Mesas Cuadradas Individuales (4 Personas: ancho 9%, alto calculado en píxeles/proporción) */}
           {tables.map((table) => {
             if (processedTableIds.has(table.id)) return null;
             const isSelected = selectedTableIds.includes(table.id);
-            const isMagneticTarget = magneticTargetId === table.id;
 
             return (
               <motion.div
@@ -625,37 +610,31 @@ export default function TableManager() {
                 dragElastic={0}
                 dragMomentum={false}
                 dragSnapToOrigin={false}
-                onDrag={(e, info) => handleDrag(e, info, table)}
                 onDragEnd={(e, info) => handleDragEnd(e, info, table)}
                 onClick={() => handleTableClick(table)}
                 style={{
                   position: 'absolute',
-                  left: `${table.x}%`,
-                  top: `${table.y}%`
+                  left: `${table.x - 4.5}%`,
+                  top: `${table.y - 3.6}%`,
+                  x: 0,
+                  y: 0
                 }}
                 className={`
-                  absolute w-[9%] aspect-square flex flex-col items-center justify-between p-1 rounded-md
-                  transform -translate-x-1/2 -translate-y-1/2 cursor-grab active:cursor-grabbing border-2 transition-all
+                  w-[9%] aspect-square flex flex-col items-center justify-between p-1 rounded-md
+                  cursor-grab active:cursor-grabbing border-2 transition-colors select-none
                   z-10 backdrop-blur-sm
                   ${getStatusStyle(table.status)}
-                  ${isMagneticTarget ? 'ring-4 ring-indigo-500 scale-110 shadow-2xl z-40 animate-pulse bg-indigo-100 border-indigo-400' : ''}
                   ${isSelected ? 'ring-4 ring-amber-400 scale-110 shadow-xl z-30' : 'hover:scale-105 shadow-sm'}
                 `}
-                title={`${table.id} (${table.status}) - Arrastra sobre otra mesa para unir en mesa doble`}
+                title={`Mesa ${table.id} (${table.status}) - Clic para ver detalles / arrastra para mover`}
               >
                 <div className="w-full flex items-center justify-between pointer-events-none leading-none">
                   <span className="font-extrabold text-[10px] text-slate-900 leading-none">{table.id}</span>
                   <span className="text-[8px] font-bold text-slate-500 leading-none">4p</span>
                 </div>
-                {isMagneticTarget ? (
-                  <span className="text-[7px] font-black uppercase text-indigo-700 bg-indigo-200/90 px-0.5 rounded animate-bounce pointer-events-none leading-none">
-                    ¡Soltar!
-                  </span>
-                ) : (
-                  <span className="text-[9px] font-extrabold uppercase tracking-tight opacity-80 pointer-events-none leading-none">
-                    {table.status.slice(0, 4)}
-                  </span>
-                )}
+                <span className="text-[9px] font-extrabold uppercase tracking-tight opacity-80 pointer-events-none leading-none">
+                  {table.status.slice(0, 4)}
+                </span>
               </motion.div>
             );
           })}
@@ -792,7 +771,7 @@ export default function TableManager() {
                 </div>
 
                 <button
-                  onClick={() => handleReleaseTable(sidebarTable.id)}
+                  onClick={() => requestReleaseTable(sidebarTable.id)}
                   className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-white border border-slate-200 text-slate-800 font-bold text-xs hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 shadow-2xs transition-all"
                 >
                   <Trash2 className="w-4 h-4 text-rose-500" />
@@ -802,6 +781,99 @@ export default function TableManager() {
             )}
           </div>
         </aside>
+      )}
+
+      {/* ========================================================= */}
+      {/* MODAL DE AUTORIZACIÓN DE GERENCIA (NIP 2026)             */}
+      {/* ========================================================= */}
+      {isPinModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="w-full max-w-sm bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden text-slate-900 animate-in zoom-in-95 duration-150">
+            {/* Modal Header */}
+            <div className="p-6 bg-slate-900 text-white flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center">
+                  <Lock className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-sm tracking-tight text-white">Autorización del Gerente</h3>
+                  <p className="text-[11px] text-slate-400">Acción protegida por seguridad</p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setIsPinModalOpen(false);
+                  setPendingAction(null);
+                  setPinInput('');
+                  setPinError(false);
+                }}
+                className="p-1 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <form onSubmit={handleVerifyPin} className="p-6 space-y-5">
+              <div className="text-center space-y-1">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">Acción a autorizar</span>
+                <p className="font-bold text-sm text-slate-800">{pendingAction?.title}</p>
+                <p className="text-xs text-slate-500 pt-1">
+                  Ingrese el código NIP maestro para confirmar esta operación:
+                </p>
+              </div>
+
+              {/* NIP Input */}
+              <div className="space-y-2">
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={6}
+                  autoFocus
+                  required
+                  placeholder="••••"
+                  value={pinInput}
+                  onChange={(e) => {
+                    setPinInput(e.target.value);
+                    if (pinError) setPinError(false);
+                  }}
+                  className={`w-full text-center tracking-[0.5em] text-2xl font-black rounded-2xl border py-3 px-4 focus:outline-none transition-all ${
+                    pinError
+                      ? 'border-rose-400 bg-rose-50/50 text-rose-600 focus:ring-2 focus:ring-rose-500'
+                      : 'border-slate-300 bg-slate-50 text-slate-900 focus:bg-white focus:border-indigo-600 focus:ring-2 focus:ring-indigo-500/20'
+                  }`}
+                />
+                {pinError && (
+                  <p className="text-[11px] text-rose-600 font-bold text-center animate-pulse">
+                    NIP incorrecto. Ingrese el NIP de Gerente autorizado.
+                  </p>
+                )}
+              </div>
+
+              {/* Quick Numpad / Actions */}
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsPinModalOpen(false);
+                    setPendingAction(null);
+                    setPinInput('');
+                    setPinError(false);
+                  }}
+                  className="flex-1 py-3 px-4 rounded-xl border border-slate-200 text-slate-700 font-bold text-xs hover:bg-slate-50 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-3 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs uppercase tracking-wider shadow-md hover:shadow-lg transition-all"
+                >
+                  Autorizar
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
 
       {/* Modal Completo de Gestión de Eventos */}
