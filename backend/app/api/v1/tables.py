@@ -11,9 +11,38 @@ router = APIRouter(prefix="/tables", tags=["tables"])
 
 @router.get("", response_model=List[TableNodeRead])
 def get_all_tables(session: Session = Depends(get_session)):
-    """Retorna el lienzo completo con coordenadas relativas y estados actuales."""
+    """Retorna el lienzo completo con coordenadas relativas, estados y clientes de reservaciones activas."""
+    from app.models.models import Reservation
     tables = session.exec(select(TableNode).order_by(TableNode.id)).all()
-    return tables
+    
+    # Obtener mapa de reservaciones activas
+    active_reservations = session.exec(select(Reservation).where(Reservation.active == True)).all()
+    res_by_id = {r.id: r for r in active_reservations}
+    res_by_group = {r.group_id: r for r in active_reservations if r.group_id}
+
+    results = []
+    for t in tables:
+        t_dict = t.dict()
+        res = None
+        if t.current_reservation_id and t.current_reservation_id in res_by_id:
+            res = res_by_id[t.current_reservation_id]
+        elif t.group_id and t.group_id in res_by_group:
+            res = res_by_group[t.group_id]
+
+        if res:
+            t_dict["customer_name"] = res.customer_name
+            t_dict["phone"] = res.phone
+            t_dict["total_paid"] = res.total_paid
+            t_dict["party_size"] = res.party_size
+        else:
+            t_dict["customer_name"] = None
+            t_dict["phone"] = None
+            t_dict["total_paid"] = None
+            t_dict["party_size"] = t.capacity
+
+        results.append(TableNodeRead(**t_dict))
+
+    return results
 
 @router.post("/merge", response_model=List[TableNodeRead])
 def merge_tables(payload: TableMergeRequest, session: Session = Depends(get_session)):

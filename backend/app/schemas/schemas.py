@@ -15,6 +15,10 @@ class TableNodeRead(BaseModel):
     orientation: str = "horizontal"
     status: TableStatus
     current_reservation_id: Optional[int] = None
+    customer_name: Optional[str] = None
+    phone: Optional[str] = None
+    total_paid: Optional[float] = None
+    party_size: Optional[int] = None
     updated_at: datetime
 
     class Config:
