@@ -19,6 +19,8 @@ class TableNodeRead(BaseModel):
     phone: Optional[str] = None
     total_paid: Optional[float] = None
     party_size: Optional[int] = None
+    event_id: Optional[int] = None
+    event_name: Optional[str] = None
     updated_at: datetime
 
     class Config:
@@ -44,7 +46,8 @@ class ReservationCreate(BaseModel):
     time_scheduled: Optional[datetime] = None
     party_size: int = 4
     total_paid: float = 500.0
-    event_name: Optional[str] = "Noche de Casino VIP"
+    event_id: Optional[int] = None
+    event_name: Optional[str] = "Día Prestige"
     table_ids: List[int] = Field(..., min_length=1, description="Tables to reserve under this reservation")
     notes: Optional[str] = None
 

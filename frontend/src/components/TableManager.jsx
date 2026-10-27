@@ -42,11 +42,9 @@ import PrinterSettingsModal from './Modals/PrinterSettingsModal';
 // NIP de Autorización del Gerente
 const MANAGER_PIN = '2026';
 
-// Lista de eventos iniciales
+// Lista de eventos iniciales (solo Día Prestige según solicitud del usuario)
 const INITIAL_EVENTS = [
-  { id: 1, name: 'Noche de Casino VIP', price_per_person: 500, event_date: '2026-10-23', event_time: '20:00' },
-  { id: 2, name: 'Torneo Texas Holdem Clásico', price_per_person: 750, event_date: '2026-10-30', event_time: '21:00' },
-  { id: 3, name: 'Gala Fin de Año Casino', price_per_person: 1200, event_date: '2026-12-31', event_time: '22:00' }
+  { id: 1, name: 'Día Prestige', price_per_person: 500, event_date: '2026-11-15', event_time: '20:00' }
 ];
 
 // 18 mesas distribuidas armónicamente en el área de piso libre
@@ -83,11 +81,17 @@ const INITIAL_TABLES = [
 export default function TableManager({ onLogout }) {
   const containerRef = useRef(null);
 
-  // Sistema de Gestión de Eventos con persistencia
+  // Sistema de Gestión de Eventos con persistencia (Limpiando eventos anteriores)
   const [events, setEvents] = useState(() => {
     try {
       const saved = localStorage.getItem('casino_events_data');
-      return saved ? JSON.parse(saved) : INITIAL_EVENTS;
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        // Filtrar para mantener solo eventos deseados
+        const prestigeOnly = parsed.filter((e) => e.name.toLowerCase().includes('prestige'));
+        if (prestigeOnly.length > 0) return prestigeOnly;
+      }
+      return INITIAL_EVENTS;
     } catch {
       return INITIAL_EVENTS;
     }
@@ -139,11 +143,13 @@ export default function TableManager({ onLogout }) {
     }
   });
 
-  // Función para cargar datos frescos desde el VPS
-  const loadTablesFromBackend = async () => {
+  // Función para cargar datos frescos desde el VPS según el evento activo
+  const loadTablesFromBackend = async (targetEvent = activeEvent) => {
     try {
       setIsSyncing(true);
-      const backendTables = await fetchTables();
+      const evName = targetEvent ? targetEvent.name : null;
+      const evId = targetEvent ? targetEvent.id : null;
+      const backendTables = await fetchTables(evId, evName);
       if (Array.isArray(backendTables) && backendTables.length > 0) {
         setTables((prev) => {
           return backendTables.map((bt) => {
@@ -159,7 +165,9 @@ export default function TableManager({ onLogout }) {
               customer_name: bt.customer_name || null,
               phone: bt.phone || null,
               total_paid: bt.total_paid ? Number(bt.total_paid) : 0,
-              party_size: bt.party_size || bt.capacity || 4
+              party_size: bt.party_size || bt.capacity || 4,
+              event_name: bt.event_name || null,
+              event_id: bt.event_id || null
             };
           });
         });
@@ -171,14 +179,14 @@ export default function TableManager({ onLogout }) {
     }
   };
 
-  // Cargar desde el VPS al montar y cada 15 segundos para sincronía multi-dispositivo en tiempo real
+  // Cargar desde el VPS al montar o cuando cambie el evento activo, y polling cada 15s
   useEffect(() => {
-    loadTablesFromBackend();
+    loadTablesFromBackend(activeEvent);
     const interval = setInterval(() => {
-      loadTablesFromBackend();
+      loadTablesFromBackend(activeEvent);
     }, 15000);
     return () => clearInterval(interval);
-  }, []);
+  }, [activeEventId]);
 
   // Guardar en localStorage como respaldo offline
   useEffect(() => {
@@ -240,7 +248,8 @@ export default function TableManager({ onLogout }) {
     setActiveEventId(id);
     const ev = events.find((e) => e.id === id);
     if (ev) {
-      notify(`Evento activo: ${ev.name} ($${ev.price_per_person}/persona)`, 'info');
+      notify(`Cargando plano para evento: ${ev.name} ($${ev.price_per_person}/persona)`, 'info');
+      loadTablesFromBackend(ev);
     }
     setIsEventsModalOpen(false);
   };
@@ -249,7 +258,24 @@ export default function TableManager({ onLogout }) {
   const handleCreateEvent = (newEvent) => {
     setEvents((prev) => [newEvent, ...prev]);
     setActiveEventId(newEvent.id);
+    loadTablesFromBackend(newEvent);
     notify(`Nuevo evento creado: ${newEvent.name}`, 'success');
+  };
+
+  // Eliminar Evento
+  const handleDeleteEvent = (idToDelete) => {
+    if (events.length <= 1) {
+      notify('Debe existir al menos un evento activo', 'warning');
+      return;
+    }
+    const remaining = events.filter((e) => e.id !== idToDelete);
+    setEvents(remaining);
+    if (activeEventId === idToDelete) {
+      const nextActive = remaining[0];
+      setActiveEventId(nextActive.id);
+      loadTablesFromBackend(nextActive);
+    }
+    notify('Evento eliminado correctamente', 'info');
   };
 
 
@@ -528,12 +554,13 @@ export default function TableManager({ onLogout }) {
           time_scheduled: new Date().toISOString(),
           party_size: Number(partySize),
           total_paid: Number(monto),
+          event_id: activeEvent.id,
           event_name: activeEvent.name,
           table_ids: dbTableIds,
           notes: `Emitido vía Web POS - ${activeEvent.event_date}`
         });
         // Recargar datos desde el backend para garantizar consistencia total
-        loadTablesFromBackend();
+        loadTablesFromBackend(activeEvent);
       } catch (backendErr) {
         console.warn("Aviso: No se pudo guardar en BD VPS, guardado en caché local:", backendErr.message);
       }
@@ -1194,6 +1221,7 @@ export default function TableManager({ onLogout }) {
         activeEventId={activeEventId}
         onSelectEvent={handleSelectEvent}
         onCreateEvent={handleCreateEvent}
+        onDeleteEvent={handleDeleteEvent}
       />
 
       {/* Módulo de Configuración de Impresora POS */}

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Calendar, Plus, DollarSign, Check, History, Clock } from 'lucide-react';
+import { X, Calendar, Plus, DollarSign, Check, History, Clock, Trash2 } from 'lucide-react';
 
 /**
  * Modal para gestionar eventos mensuales, crear nuevos con fecha, hora, precio y cambiar el evento activo.
@@ -10,7 +10,8 @@ export default function EventsModal({
   events,
   activeEventId,
   onSelectEvent,
-  onCreateEvent
+  onCreateEvent,
+  onDeleteEvent
 }) {
   const [name, setName] = useState('');
   const [price, setPrice] = useState('500');
@@ -162,11 +163,26 @@ export default function EventsModal({
                     )}
                   </div>
                 </div>
-                <div className="text-right">
-                  <span className="text-xs font-bold text-emerald-600 block">
-                    ${ev.price_per_person} MXN
-                  </span>
-                  <span className="text-[10px] text-slate-400">por persona</span>
+                <div className="flex items-center gap-3">
+                  <div className="text-right">
+                    <span className="text-xs font-bold text-emerald-600 block">
+                      ${ev.price_per_person} MXN
+                    </span>
+                    <span className="text-[10px] text-slate-400">por persona</span>
+                  </div>
+                  {onDeleteEvent && events.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDeleteEvent(ev.id);
+                      }}
+                      className="p-1.5 text-slate-400 hover:text-rose-500 rounded-lg hover:bg-rose-50 transition-colors"
+                      title="Eliminar este evento"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
               </div>
             );

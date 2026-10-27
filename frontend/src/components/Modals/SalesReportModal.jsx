@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   X,
   FileSpreadsheet,
@@ -8,8 +8,10 @@ import {
   DollarSign,
   TrendingUp,
   Receipt,
-  Printer
+  Printer,
+  RefreshCw
 } from 'lucide-react';
+import { fetchReservations } from '../../services/api';
 
 export default function SalesReportModal({
   isOpen,
@@ -18,51 +20,94 @@ export default function SalesReportModal({
   events,
   tables
 }) {
-  const [selectedFilterEventId, setSelectedFilterEventId] = useState(
-    activeEvent ? activeEvent.id : 'all'
+  const [selectedFilterEventName, setSelectedFilterEventName] = useState(
+    activeEvent ? activeEvent.name : 'all'
   );
+  const [dbReservations, setDbReservations] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  // Cargar historial de reservaciones desde la base de datos de PostgreSQL del VPS
+  const loadReservations = async () => {
+    setLoading(true);
+    try {
+      const data = await fetchReservations(true);
+      if (Array.isArray(data)) {
+        setDbReservations(data);
+      }
+    } catch (e) {
+      console.warn("No se pudo cargar historial de reservaciones de la BD:", e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen) {
+      loadReservations();
+      setSelectedFilterEventName(activeEvent ? activeEvent.name : 'all');
+    }
+  }, [isOpen, activeEvent]);
 
   if (!isOpen) return null;
 
-  // Filtrar mesas ocupadas / reservadas
-  const reservedTables = tables.filter(
-    (t) => t.status === 'ocupada' || t.status === 'reservada'
-  );
+  // Filtrar reservaciones según evento seleccionado
+  const filteredReservations = dbReservations.filter((r) => {
+    if (selectedFilterEventName === 'all') return true;
+    return r.event_name === selectedFilterEventName;
+  });
 
-  // Totales
-  const totalRecaudado = reservedTables.reduce(
-    (acc, t) => acc + Number(t.total_paid || 0),
-    0
-  );
-  const totalComensales = reservedTables.reduce(
-    (acc, t) => acc + Number(t.party_size || (t.group_id ? 6 : 4)),
-    0
-  );
-  const totalMesasOcupadas = reservedTables.length;
+  // Si aún no hay reservaciones en BD, recurrir a las mesas ocupadas en la pantalla actual
+  const useFallbackTables = filteredReservations.length === 0 && tables.some(t => t.status === 'ocupada');
+  const fallbackList = tables.filter(t => t.status === 'ocupada' || t.status === 'reservada');
+
+  // Totales calculados
+  const totalRecaudado = useFallbackTables
+    ? fallbackList.reduce((acc, t) => acc + Number(t.total_paid || 0), 0)
+    : filteredReservations.reduce((acc, r) => acc + Number(r.total_paid || 0), 0);
+
+  const totalComensales = useFallbackTables
+    ? fallbackList.reduce((acc, t) => acc + Number(t.party_size || 4), 0)
+    : filteredReservations.reduce((acc, r) => acc + Number(r.party_size || 4), 0);
+
+  const totalMesasOcupadas = useFallbackTables
+    ? fallbackList.length
+    : filteredReservations.length;
 
   // Exportar reporte a formato CSV compatible con Excel
   const handleExportCSV = () => {
     let csv = '\uFEFF'; // BOM para compatibilidad con caracteres latinos en Excel
     csv += 'REPORTE DE VENTAS Y RESERVACIONES - CASINO PRESTIGE\n';
-    csv += `Evento: ${activeEvent?.name || 'General'}\n`;
+    csv += `Evento: ${selectedFilterEventName === 'all' ? 'Todos los Eventos' : selectedFilterEventName}\n`;
     csv += `Fecha Emisión: ${new Date().toLocaleString()}\n\n`;
-    csv += 'Mesa,Titular,Teléfono,Comensales (Pax),Monto Pagado (MXN),Estado,Fecha/Hora\n';
+    csv += 'ID Folio,Evento,Titular,Teléfono,Comensales (Pax),Monto Pagado (MXN),Fecha Programada\n';
 
-    reservedTables.forEach((t) => {
-      const mesaName = t.group_id ? `Doble ${t.id}` : `Mesa ${t.id}`;
-      const titular = `"${(t.customer_name || 'Cliente en Sala').replace(/"/g, '""')}"`;
-      const tel = `"${t.phone || 'N/A'}"`;
-      const pax = t.party_size || (t.group_id ? 6 : 4);
-      const paid = t.total_paid || 0;
-      const status = t.status.toUpperCase();
-      const time = t.reserved_at || new Date().toLocaleDateString();
+    if (!useFallbackTables) {
+      filteredReservations.forEach((r) => {
+        const folio = `"TKT-${String(r.id).padStart(5, '0')}"`;
+        const evName = `"${(r.event_name || 'Día Prestige').replace(/"/g, '""')}"`;
+        const titular = `"${(r.customer_name || 'Cliente').replace(/"/g, '""')}"`;
+        const tel = `"${r.phone || 'N/A'}"`;
+        const pax = r.party_size || 4;
+        const paid = r.total_paid || 0;
+        const time = r.time_scheduled ? new Date(r.time_scheduled).toLocaleString() : 'N/A';
+        csv += `${folio},${evName},${titular},${tel},${pax},${paid},${time}\n`;
+      });
+    } else {
+      fallbackList.forEach((t) => {
+        const folio = `"${t.id}"`;
+        const evName = `"${activeEvent?.name || 'Día Prestige'}"`;
+        const titular = `"${(t.customer_name || 'Cliente en Sala').replace(/"/g, '""')}"`;
+        const tel = `"${t.phone || 'N/A'}"`;
+        const pax = t.party_size || 4;
+        const paid = t.total_paid || 0;
+        const time = new Date().toLocaleString();
+        csv += `${folio},${evName},${titular},${tel},${pax},${paid},${time}\n`;
+      });
+    }
 
-      csv += `${mesaName},${titular},${tel},${pax},${paid},${status},${time}\n`;
-    });
-
-    csv += `\nTOTAL RECAUDADO,,,$${totalRecaudado} MXN\n`;
+    csv += `\nTOTAL RECAUDADO,,,${totalRecaudado} MXN\n`;
     csv += `TOTAL COMENSALES,,,${totalComensales} Pax\n`;
-    csv += `TOTAL MESAS RESERVADAS,,,${totalMesasOcupadas} Mesas\n`;
+    csv += `TOTAL RESERVAS REGISTRADAS,,,${totalMesasOcupadas}\n`;
 
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
@@ -70,7 +115,7 @@ export default function SalesReportModal({
     link.setAttribute('href', url);
     link.setAttribute(
       'download',
-      `Reporte_Ventas_${(activeEvent?.name || 'Casino').replace(/\s+/g, '_')}_${Date.now()}.csv`
+      `Reporte_Ventas_${(selectedFilterEventName || 'Casino').replace(/\s+/g, '_')}_${Date.now()}.csv`
     );
     document.body.appendChild(link);
     link.click();
@@ -155,15 +200,40 @@ export default function SalesReportModal({
         {/* Tabla Detallada de Reservaciones */}
         <div className="flex-1 overflow-y-auto p-6">
           <div className="flex items-center justify-between mb-3">
-            <h4 className="font-extrabold text-xs text-slate-700 uppercase tracking-wider">
-              Detalle por Mesa y Comprobante
-            </h4>
-            <span className="text-xs font-medium text-slate-400">
-              {reservedTables.length} registros
-            </span>
+            <div className="flex items-center gap-2">
+              <h4 className="font-extrabold text-xs text-slate-700 uppercase tracking-wider">
+                Detalle de Reservaciones Registradas
+              </h4>
+              <button
+                onClick={loadReservations}
+                disabled={loading}
+                className="text-[11px] text-indigo-600 hover:text-indigo-800 flex items-center gap-1 font-semibold"
+                title="Actualizar datos de la BD"
+              >
+                <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
+                <span>Actualizar</span>
+              </button>
+            </div>
+
+            {/* Selector de Evento */}
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-slate-400 font-semibold">Filtrar por Evento:</span>
+              <select
+                value={selectedFilterEventName}
+                onChange={(e) => setSelectedFilterEventName(e.target.value)}
+                className="text-xs bg-slate-100 border border-slate-300 rounded-lg px-2.5 py-1 font-bold text-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              >
+                <option value="all">Todos los Eventos</option>
+                {events.map((ev) => (
+                  <option key={ev.id} value={ev.name}>
+                    {ev.name}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
-          {reservedTables.length === 0 ? (
+          {(!useFallbackTables && filteredReservations.length === 0) || (useFallbackTables && fallbackList.length === 0) ? (
             <div className="text-center py-12 text-slate-400 space-y-2">
               <Receipt className="w-8 h-8 mx-auto text-slate-300" />
               <p className="text-xs font-semibold">Aún no hay reservaciones registradas para este evento.</p>
@@ -173,7 +243,8 @@ export default function SalesReportModal({
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
                   <tr className="bg-slate-100 text-slate-600 font-bold border-b border-slate-200">
-                    <th className="py-2.5 px-3.5">Mesa</th>
+                    <th className="py-2.5 px-3.5">Folio / Ticket</th>
+                    <th className="py-2.5 px-3.5">Evento</th>
                     <th className="py-2.5 px-3.5">Titular</th>
                     <th className="py-2.5 px-3.5">Teléfono</th>
                     <th className="py-2.5 px-3.5 text-center">Pax</th>
@@ -182,30 +253,63 @@ export default function SalesReportModal({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium">
-                  {reservedTables.map((t, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="py-2.5 px-3.5 font-bold text-slate-900">
-                        {t.group_id ? `Doble (${t.id})` : t.id}
-                      </td>
-                      <td className="py-2.5 px-3.5 text-slate-800 font-semibold">
-                        {t.customer_name || 'Cliente en Sala'}
-                      </td>
-                      <td className="py-2.5 px-3.5 text-slate-500 font-mono">
-                        {t.phone || 'N/A'}
-                      </td>
-                      <td className="py-2.5 px-3.5 text-center font-bold text-indigo-700">
-                        {t.party_size || (t.group_id ? 6 : 4)}
-                      </td>
-                      <td className="py-2.5 px-3.5 text-right font-black text-emerald-600">
-                        ${Number(t.total_paid || 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
-                      </td>
-                      <td className="py-2.5 px-3.5 text-center">
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 capitalize">
-                          {t.status}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
+                  {!useFallbackTables ? (
+                    filteredReservations.map((r, idx) => (
+                      <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="py-2.5 px-3.5 font-bold text-slate-900 font-mono">
+                          TKT-{String(r.id).padStart(5, '0')}
+                        </td>
+                        <td className="py-2.5 px-3.5 text-slate-700 font-medium">
+                          {r.event_name || 'Día Prestige'}
+                        </td>
+                        <td className="py-2.5 px-3.5 text-slate-900 font-bold">
+                          {r.customer_name || 'Cliente'}
+                        </td>
+                        <td className="py-2.5 px-3.5 text-slate-500 font-mono">
+                          {r.phone || 'N/A'}
+                        </td>
+                        <td className="py-2.5 px-3.5 text-center font-bold text-indigo-700">
+                          {r.party_size || 4} Pax
+                        </td>
+                        <td className="py-2.5 px-3.5 text-right font-black text-emerald-600">
+                          ${Number(r.total_paid || 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                        </td>
+                        <td className="py-2.5 px-3.5 text-center">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 capitalize">
+                            Confirmado
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    fallbackList.map((t, idx) => (
+                      <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="py-2.5 px-3.5 font-bold text-slate-900">
+                          {t.group_id ? `Doble (${t.id})` : t.id}
+                        </td>
+                        <td className="py-2.5 px-3.5 text-slate-700 font-medium">
+                          {activeEvent?.name || 'Día Prestige'}
+                        </td>
+                        <td className="py-2.5 px-3.5 text-slate-900 font-bold">
+                          {t.customer_name || 'Cliente en Sala'}
+                        </td>
+                        <td className="py-2.5 px-3.5 text-slate-500 font-mono">
+                          {t.phone || 'N/A'}
+                        </td>
+                        <td className="py-2.5 px-3.5 text-center font-bold text-indigo-700">
+                          {t.party_size || 4} Pax
+                        </td>
+                        <td className="py-2.5 px-3.5 text-right font-black text-emerald-600">
+                          ${Number(t.total_paid || 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                        </td>
+                        <td className="py-2.5 px-3.5 text-center">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 capitalize">
+                            {t.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>

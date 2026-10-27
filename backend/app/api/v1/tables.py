@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session, select
 from app.core.database import get_session
@@ -10,13 +10,23 @@ from app.schemas.schemas import TableNodeRead, TableMergeRequest, TablePositionU
 router = APIRouter(prefix="/tables", tags=["tables"])
 
 @router.get("", response_model=List[TableNodeRead])
-def get_all_tables(session: Session = Depends(get_session)):
-    """Retorna el lienzo completo con coordenadas relativas, estados y clientes de reservaciones activas."""
+def get_all_tables(
+    event_id: Optional[int] = None,
+    event_name: Optional[str] = None,
+    session: Session = Depends(get_session)
+):
+    """Retorna el lienzo completo con coordenadas relativas, estados y clientes de reservaciones activas para el evento solicitado."""
     from app.models.models import Reservation
     tables = session.exec(select(TableNode).order_by(TableNode.id)).all()
     
-    # Obtener mapa de reservaciones activas
-    active_reservations = session.exec(select(Reservation).where(Reservation.active == True)).all()
+    # Obtener mapa de reservaciones activas (filtrado opcional por evento)
+    stmt = select(Reservation).where(Reservation.active == True)
+    if event_id is not None:
+        stmt = stmt.where(Reservation.event_id == event_id)
+    elif event_name:
+        stmt = stmt.where(Reservation.event_name == event_name)
+        
+    active_reservations = session.exec(stmt).all()
     res_by_id = {r.id: r for r in active_reservations}
     res_by_group = {r.group_id: r for r in active_reservations if r.group_id}
 
@@ -30,15 +40,23 @@ def get_all_tables(session: Session = Depends(get_session)):
             res = res_by_group[t.group_id]
 
         if res:
+            t_dict["status"] = t.status
             t_dict["customer_name"] = res.customer_name
             t_dict["phone"] = res.phone
             t_dict["total_paid"] = res.total_paid
             t_dict["party_size"] = res.party_size
+            t_dict["event_id"] = res.event_id
+            t_dict["event_name"] = res.event_name
         else:
+            # Si se está filtrando por evento y esta mesa no pertenece a este evento, se muestra DISPONIBLE
+            if event_id is not None or event_name is not None:
+                t_dict["status"] = TableStatus.DISPONIBLE
             t_dict["customer_name"] = None
             t_dict["phone"] = None
             t_dict["total_paid"] = None
             t_dict["party_size"] = t.capacity
+            t_dict["event_id"] = None
+            t_dict["event_name"] = None
 
         results.append(TableNodeRead(**t_dict))
 

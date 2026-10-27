@@ -1,8 +1,20 @@
 const API_BASE = '/api';
 
-export async function fetchTables() {
-  const res = await fetch(`${API_BASE}/tables`);
+export async function fetchTables(eventId = null, eventName = null) {
+  let url = `${API_BASE}/tables`;
+  const params = new URLSearchParams();
+  if (eventId) params.append('event_id', eventId);
+  if (eventName) params.append('event_name', eventName);
+  if (params.toString()) url += `?${params.toString()}`;
+
+  const res = await fetch(url);
   if (!res.ok) throw new Error('Error al cargar mesas');
+  return res.json();
+}
+
+export async function fetchReservations(activeOnly = true) {
+  const res = await fetch(`${API_BASE}/reservations?active_only=${activeOnly}`);
+  if (!res.ok) throw new Error('Error al cargar historial de reservaciones');
   return res.json();
 }
 
