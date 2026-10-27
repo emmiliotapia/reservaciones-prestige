@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session, select
 from app.core.database import get_session
 from app.models.models import TableNode, TableStatus
-from app.schemas.schemas import TableNodeRead, TableMergeRequest, TablePositionUpdate, TableStatusUpdate
+from app.schemas.schemas import TableNodeRead, TableMergeRequest, TablePositionUpdate, TableStatusUpdate, TableOrientationUpdate
 
 router = APIRouter(prefix="/tables", tags=["tables"])
 
