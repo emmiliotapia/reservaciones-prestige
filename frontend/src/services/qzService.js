@@ -27,48 +27,47 @@ class QZService {
         this.qz.security.setCertificatePromise(() => Promise.resolve(""));
         this.qz.security.setSignaturePromise(() => Promise.resolve(""));
 
+        // Timeout helper de 3.5 segundos para que la UI jamás se quede congelada
+        const withTimeout = (promise, ms = 3500) => {
+          return Promise.race([
+            promise,
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Tiempo de espera agotado al conectar')), ms))
+          ]);
+        };
+
         if (!this.qz.websocket.isActive()) {
           try {
-            // Intento 1: Detección inteligente nativa de qz-tray
-            await this.qz.websocket.connect({
-              retries: 2,
-              delay: 1
-            });
+            await withTimeout(
+              this.qz.websocket.connect({
+                host: 'localhost',
+                usingSecure: true,
+                port: { secure: [8181, 8283], insecure: [8182, 8183] },
+                retries: 0,
+                delay: 0
+              }),
+              3500
+            );
           } catch (e1) {
-            console.warn("Fallo connect por defecto, probando puerto explícito 8181 (WSS):", e1.message);
-            // Intento 2: Forzar WSS a localhost:8181
-            try {
-              if (!this.qz.websocket.isActive()) {
-                await this.qz.websocket.connect({
-                  host: 'localhost',
-                  usingSecure: true,
-                  port: { secure: [8181, 8283], insecure: [8182, 8183] },
-                  retries: 1,
-                  delay: 1
-                });
-              }
-            } catch (e2) {
-              console.warn("Fallo intento WSS 8181, probando modo alternativo:", e2.message);
-              if (!this.qz.websocket.isActive()) {
-                await this.qz.websocket.connect({
-                  host: 'localhost',
-                  usingSecure: false,
-                  port: { secure: [8181, 8283], insecure: [8182, 8183] },
-                  retries: 1,
-                  delay: 1
-                });
-              }
+            console.warn("Fallo WSS 8181, probando conexión nativa:", e1.message);
+            if (!this.qz.websocket.isActive()) {
+              await withTimeout(
+                this.qz.websocket.connect({
+                  retries: 0,
+                  delay: 0
+                }),
+                2500
+              );
             }
           }
         }
 
-        this.connected = true;
-        console.log("QZ Tray conectado exitosamente via ws://localhost:8182");
+        this.connected = this.qz.websocket.isActive();
+        console.log("QZ Tray conectado exitosamente via WebSocket");
 
         // Si no hay impresora seleccionada por el usuario en localStorage, buscar la default
-        if (!this.printerName) {
+        if (!this.printerName && this.connected) {
           try {
-            const defPrinter = await this.qz.printers.getDefault();
+            const defPrinter = await withTimeout(this.qz.printers.getDefault(), 2000);
             this.printerName = defPrinter || "POS-Printer";
             localStorage.setItem('pos_selected_printer', this.printerName);
           } catch {
@@ -76,9 +75,9 @@ class QZService {
           }
         }
 
-        return true;
+        return this.connected;
       } catch (err) {
-        console.warn("QZ Tray no está en ejecución local en ws://localhost:8182:", err.message);
+        console.warn("QZ Tray no se pudo conectar:", err.message);
         this.connected = false;
         return false;
       }

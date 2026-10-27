@@ -24,7 +24,7 @@ class TableMergeRequest(BaseModel):
     table_ids: List[int] = Field(..., min_length=1, description="Array of table IDs to group together")
 
 class TableOrientationUpdate(BaseModel):
-    orientation: str = Field(..., regex="^(horizontal|vertical)$")
+    orientation: str = Field(..., pattern="^(horizontal|vertical)$")
 
 class TablePositionUpdate(BaseModel):
     pos_x: float
