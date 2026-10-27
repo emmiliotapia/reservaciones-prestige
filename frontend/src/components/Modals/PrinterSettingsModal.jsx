@@ -140,7 +140,7 @@ export default function PrinterSettingsModal({ isOpen, onClose, onTestPrint }) {
                 <p className="text-xs mt-1 text-slate-300 leading-relaxed">
                   {isConnected 
                     ? 'Conectado a QZ Tray en tu PC. Las órdenes se envían directamente a la impresora térmica con corte físico automático.' 
-                    : 'QZ Tray no está corriendo localmente. El sistema recurre a la ventana de impresión del navegador.'}
+                    : statusMsg || 'QZ Tray no está corriendo localmente. El sistema recurre a la ventana de impresión del navegador.'}
                 </p>
               </div>
             </div>

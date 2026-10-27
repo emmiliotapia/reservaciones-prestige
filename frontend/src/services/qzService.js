@@ -28,36 +28,36 @@ class QZService {
         this.qz.security.setSignaturePromise(() => Promise.resolve(""));
 
         if (!this.qz.websocket.isActive()) {
-          const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
-          
           try {
-            // Primer intento: según el protocolo actual
+            // Intento 1: Detección inteligente nativa de qz-tray
             await this.qz.websocket.connect({
-              host: 'localhost',
-              usingSecure: isHttps,
-              port: {
-                secure: [8181, 8283, 8284],
-                insecure: [8182, 8183]
-              },
-              keepAlive: 60,
               retries: 2,
               delay: 1
             });
           } catch (e1) {
-            console.warn("Fallo intento inicial de websocket QZ Tray, probando modo alternativo:", e1.message);
-            // Segundo intento: alternar modo seguro/inseguro si el primero no respondió
-            if (!this.qz.websocket.isActive()) {
-              await this.qz.websocket.connect({
-                host: 'localhost',
-                usingSecure: !isHttps,
-                port: {
-                  secure: [8181, 8283, 8284],
-                  insecure: [8182, 8183]
-                },
-                keepAlive: 60,
-                retries: 1,
-                delay: 1
-              });
+            console.warn("Fallo connect por defecto, probando puerto explícito 8181 (WSS):", e1.message);
+            // Intento 2: Forzar WSS a localhost:8181
+            try {
+              if (!this.qz.websocket.isActive()) {
+                await this.qz.websocket.connect({
+                  host: 'localhost',
+                  usingSecure: true,
+                  port: { secure: [8181, 8283], insecure: [8182, 8183] },
+                  retries: 1,
+                  delay: 1
+                });
+              }
+            } catch (e2) {
+              console.warn("Fallo intento WSS 8181, probando modo alternativo:", e2.message);
+              if (!this.qz.websocket.isActive()) {
+                await this.qz.websocket.connect({
+                  host: 'localhost',
+                  usingSecure: false,
+                  port: { secure: [8181, 8283], insecure: [8182, 8183] },
+                  retries: 1,
+                  delay: 1
+                });
+              }
             }
           }
         }
