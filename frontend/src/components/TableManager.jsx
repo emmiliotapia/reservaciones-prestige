@@ -650,6 +650,7 @@ export default function TableManager({ onLogout }) {
             const status = isGroupOccupied ? 'ocupada' : isGroupReserved ? 'reservada' : 'disponible';
             const clientTable = groupTables.find((t) => t.customer_name) || groupTables[0];
 
+            const orientation = groupTables[0].orientation || 'horizontal';
             const isHorizontal = orientation === 'horizontal';
             const labels = groupTables.map((t) => t.id).join(' + ');
 
