@@ -297,12 +297,25 @@ export default function TableManager({ onLogout }) {
     }
   };
 
-  // Eliminar Evento en PostgreSQL
-  const handleDeleteEvent = async (idToDelete) => {
+  // Solicitar autorización para Eliminar Evento (Requiere NIP de Gerente)
+  const requestDeleteEvent = (idToDelete) => {
     if (events.length <= 1) {
       notify('Debe existir al menos un evento activo', 'warning');
       return;
     }
+    const targetEvent = events.find((e) => e.id === idToDelete);
+    setPendingAction({
+      type: 'delete_event',
+      id: idToDelete,
+      title: `Eliminar Evento "${targetEvent?.name || idToDelete}"`
+    });
+    setPinInput('');
+    setPinError(false);
+    setIsPinModalOpen(true);
+  };
+
+  // Ejecución Autorizada: Eliminar Evento en PostgreSQL
+  const executeDeleteEvent = async (idToDelete) => {
     try {
       await deleteEventApi(idToDelete);
     } catch (e) {
@@ -315,7 +328,7 @@ export default function TableManager({ onLogout }) {
       setActiveEventId(nextActive.id);
       loadTablesFromBackend(nextActive);
     }
-    notify('Evento eliminado correctamente', 'info');
+    notify('Evento eliminado correctamente de la base de datos.', 'info');
   };
 
 
@@ -523,6 +536,8 @@ export default function TableManager({ onLogout }) {
       await executeReleaseTable(pendingAction.id);
     } else if (pendingAction?.type === 'unmerge') {
       await executeUnmerge(pendingAction.id);
+    } else if (pendingAction?.type === 'delete_event') {
+      await executeDeleteEvent(pendingAction.id);
     } else if (pendingAction?.type === 'reset_all') {
       setTables(INITIAL_TABLES);
       localStorage.setItem('casino_tables_data', JSON.stringify(INITIAL_TABLES));
@@ -1172,7 +1187,7 @@ export default function TableManager({ onLogout }) {
       {/* MODAL DE AUTORIZACIÓN DE GERENCIA (NIP 2026)             */}
       {/* ========================================================= */}
       {isPinModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-xs animate-in fade-in duration-150">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-xs animate-in fade-in duration-150">
           <div className="w-full max-w-sm bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden text-slate-900 animate-in zoom-in-95 duration-150">
             {/* Modal Header */}
             <div className="p-6 bg-slate-900 text-white flex items-center justify-between">
@@ -1277,7 +1292,7 @@ export default function TableManager({ onLogout }) {
         activeEventId={activeEventId}
         onSelectEvent={handleSelectEvent}
         onCreateEvent={handleCreateEvent}
-        onDeleteEvent={handleDeleteEvent}
+        onDeleteEvent={requestDeleteEvent}
       />
 
       {/* Módulo de Configuración de Impresora POS */}
