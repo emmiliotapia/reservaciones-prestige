@@ -22,13 +22,7 @@ def create_reservation(payload: ReservationCreate, session: Session = Depends(ge
     if len(tables) != len(payload.table_ids):
         raise HTTPException(status_code=404, detail="Una o más mesas no fueron encontradas")
 
-    # Check if any table is already ocupada
-    for t in tables:
-        if t.status in [TableStatus.OCUPADA]:
-            raise HTTPException(
-                status_code=409, 
-                detail=f"La mesa {t.label} se encuentra actualmente ocupada."
-            )
+    scheduled_time = payload.time_scheduled or datetime.utcnow()
 
     # If tables already share a group_id, reuse it; otherwise create a unified group_id
     existing_group_ids = {t.group_id for t in tables if t.group_id is not None}
@@ -41,7 +35,7 @@ def create_reservation(payload: ReservationCreate, session: Session = Depends(ge
     reservation = Reservation(
         customer_name=payload.customer_name,
         phone=payload.phone,
-        time_scheduled=payload.time_scheduled,
+        time_scheduled=scheduled_time,
         party_size=payload.party_size,
         total_paid=payload.total_paid,
         event_name=payload.event_name or "Noche de Casino VIP",
@@ -73,7 +67,7 @@ def create_reservation(payload: ReservationCreate, session: Session = Depends(ge
         tables=table_labels,
         customer_name=payload.customer_name,
         phone=payload.phone,
-        time_scheduled=payload.time_scheduled.strftime("%Y-%m-%d %H:%M"),
+        time_scheduled=scheduled_time.strftime("%Y-%m-%d %H:%M"),
         party_size=payload.party_size,
         total_paid=payload.total_paid,
         event_name=payload.event_name or "Noche de Casino VIP",

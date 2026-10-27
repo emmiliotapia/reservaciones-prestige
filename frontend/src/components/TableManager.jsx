@@ -525,12 +525,15 @@ export default function TableManager({ onLogout }) {
         await createReservation({
           customer_name: customerName.trim(),
           phone: phone.trim(),
+          time_scheduled: new Date().toISOString(),
           party_size: Number(partySize),
           total_paid: Number(monto),
           event_name: activeEvent.name,
           table_ids: dbTableIds,
           notes: `Emitido vía Web POS - ${activeEvent.event_date}`
         });
+        // Recargar datos desde el backend para garantizar consistencia total
+        loadTablesFromBackend();
       } catch (backendErr) {
         console.warn("Aviso: No se pudo guardar en BD VPS, guardado en caché local:", backendErr.message);
       }

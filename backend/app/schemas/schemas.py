@@ -41,7 +41,7 @@ class TableStatusUpdate(BaseModel):
 class ReservationCreate(BaseModel):
     customer_name: str
     phone: str
-    time_scheduled: datetime
+    time_scheduled: Optional[datetime] = None
     party_size: int = 4
     total_paid: float = 500.0
     event_name: Optional[str] = "Noche de Casino VIP"
