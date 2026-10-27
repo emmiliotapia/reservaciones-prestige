@@ -122,7 +122,130 @@ class QZService {
   }
 
   /**
-   * Ejecución Silenciosa con doble impresión (Copia Local y Copia Cliente)
+   * Genera el HTML térmico formateado para impresión nativa del navegador (58mm / 80mm)
+   */
+  generateHtmlReceipt(ticket, isCustomerCopy = false) {
+    const formattedTotal = Number(ticket.total_paid || 0).toLocaleString('es-MX', { minimumFractionDigits: 2 });
+    const tablesText = ticket.tables ? ticket.tables.join(' + ') : 'MESA';
+    return `
+      <div style="width: 280px; font-family: monospace; font-size: 12px; line-height: 1.4; color: #000; padding: 10px; margin: 0 auto; page-break-after: always; box-sizing: border-box;">
+        <div style="text-align: center; border-bottom: 2px dashed #000; padding-bottom: 8px; margin-bottom: 8px;">
+          <h2 style="margin: 0; font-size: 15px; font-weight: 900; letter-spacing: 1px;">CASINO & LOUNGE CLUB</h2>
+          <p style="margin: 4px 0 0 0; font-size: 11px; font-weight: bold;">${(ticket.event_name || 'EVENTO EXCLUSIVO').toUpperCase()}</p>
+          <p style="margin: 2px 0 0 0; font-size: 10px;">FECHA: ${ticket.event_date || 'NOVIEMBRE 2026'}</p>
+          <div style="margin-top: 6px; font-weight: bold; background: #000; color: #fff; padding: 2px 4px; display: inline-block; font-size: 10px;">
+            ${isCustomerCopy ? '*** COMPROBANTE CLIENTE ***' : '*** COMPROBANTE DE SALA ***'}
+          </div>
+        </div>
+
+        <div style="text-align: center; border: 1.5px solid #000; padding: 6px; margin: 8px 0; border-radius: 4px;">
+          <div style="font-size: 10px; font-weight: bold; text-transform: uppercase;">MESA(S) ASIGNADA(S)</div>
+          <div style="font-size: 16px; font-weight: 900; margin-top: 2px;">&gt;&gt;&gt; ${tablesText} &lt;&lt;&lt;</div>
+        </div>
+
+        <div style="margin: 8px 0; font-size: 11px;">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
+            <span>Folio:</span>
+            <strong>${ticket.ticket_id}</strong>
+          </div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
+            <span>Titular:</span>
+            <strong>${ticket.customer_name}</strong>
+          </div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
+            <span>Teléfono:</span>
+            <span>${ticket.phone || 'N/A'}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
+            <span>Comensales:</span>
+            <strong>${ticket.party_size} Pax</strong>
+          </div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
+            <span>Cuota/Pax:</span>
+            <span>$${ticket.price_per_person || 500} MXN</span>
+          </div>
+        </div>
+
+        <div style="border-top: 2px dashed #000; border-bottom: 2px dashed #000; padding: 6px 0; margin: 8px 0;">
+          <div style="display: flex; justify-content: space-between; font-size: 13px; font-weight: 900;">
+            <span>TOTAL:</span>
+            <span>$${formattedTotal} MXN</span>
+          </div>
+          <div style="font-size: 10px; margin-top: 2px; text-align: right; font-weight: bold;">PAGO COMPLETO</div>
+        </div>
+
+        <div style="text-align: center; font-size: 10px; margin-top: 8px; color: #333;">
+          <div>Presenta este comprobante al ingresar</div>
+          <div>Emitido: ${ticket.printed_at || new Date().toLocaleTimeString()}</div>
+        </div>
+      </div>
+    `;
+  }
+
+  /**
+   * Abre el diálogo de impresión nativo del navegador con 2 tickets (Copia Sala + Copia Cliente)
+   */
+  printBrowserTickets(ticketPayload) {
+    return new Promise((resolve) => {
+      const copySala = this.generateHtmlReceipt(ticketPayload, false);
+      const copyCliente = this.generateHtmlReceipt(ticketPayload, true);
+
+      const printIframe = document.createElement('iframe');
+      printIframe.style.position = 'fixed';
+      printIframe.style.right = '0';
+      printIframe.style.bottom = '0';
+      printIframe.style.width = '0';
+      printIframe.style.height = '0';
+      printIframe.style.border = '0';
+      document.body.appendChild(printIframe);
+
+      const doc = printIframe.contentWindow.document;
+      doc.open();
+      doc.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Tickets Reservación - ${ticketPayload.customer_name}</title>
+          <style>
+            @page {
+              margin: 0;
+              size: auto;
+            }
+            body {
+              margin: 0;
+              padding: 0;
+              background: #fff;
+              font-family: monospace;
+            }
+          </style>
+        </head>
+        <body>
+          ${copySala}
+          ${copyCliente}
+        </body>
+        </html>
+      `);
+      doc.close();
+
+      setTimeout(() => {
+        try {
+          printIframe.contentWindow.focus();
+          printIframe.contentWindow.print();
+        } catch (e) {
+          console.error("Error abriendo diálogo de impresión:", e);
+        }
+        setTimeout(() => {
+          document.body.removeChild(printIframe);
+          resolve(true);
+        }, 1500);
+      }, 350);
+    });
+  }
+
+  /**
+   * Ejecución Silenciosa con doble impresión (Copia Local y Copia Cliente).
+   * Si QZ Tray no está instalado o no se puede conectar, dispara automáticamente
+   * la ventana de impresión nativa de tickets térmicos dobles para que el usuario NUNCA se quede sin ticket.
    */
   async printDoubleTicket(ticketPayload) {
     const isReady = await this.init();
@@ -133,15 +256,13 @@ class QZService {
     const copyClient = this.generateEscPosTemplate(ticketPayload, true);
 
     if (!isReady || !this.connected) {
-      console.warn("Simulación de impresión térmica (QZ Tray no detectado localmente):");
-      console.log("%c[TICKET 1 - LOCAL]", "color: #00FF66; font-weight: bold;");
-      console.log(copyLocal);
-      console.log("%c[TICKET 2 - CLIENTE]", "color: #00FF66; font-weight: bold;");
-      console.log(copyClient);
+      console.warn("QZ Tray no detectado localmente. Usando motor de impresión directa del navegador...");
+      await this.printBrowserTickets(ticketPayload);
       return {
         success: true,
-        simulated: true,
-        message: "Impresión simulada en consola (QZ Tray no activo en ws://localhost:8182)"
+        simulated: false,
+        fallbackBrowser: true,
+        message: "Doble ticket enviado a la impresora del sistema"
       };
     }
 
@@ -163,14 +284,15 @@ class QZService {
       return {
         success: true,
         simulated: false,
-        message: "Doble ticket enviado silenciosamente a la cola de Windows"
+        message: "Doble ticket enviado silenciosamente a la impresora POS"
       };
     } catch (err) {
-      console.error("Fallo al imprimir via QZ Tray:", err);
+      console.warn("Fallo al imprimir via QZ Tray, recurriendo a diálogo directo del navegador:", err);
+      await this.printBrowserTickets(ticketPayload);
       return {
-        success: false,
-        simulated: false,
-        error: err.message
+        success: true,
+        fallbackBrowser: true,
+        message: "Doble ticket abierto en la impresora"
       };
     }
   }

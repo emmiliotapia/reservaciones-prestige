@@ -2,6 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
   Calendar,
+  Minimize2,
+  Maximize2,
   DollarSign,
   Printer,
   RotateCw,
@@ -84,6 +86,7 @@ export default function TableManager() {
   // Panel Lateral Derecho Único
   const [sidebarTable, setSidebarTable] = useState(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isSidebarMinimized, setIsSidebarMinimized] = useState(false);
 
   // Formulario en el Panel Lateral
   const [customerName, setCustomerName] = useState('');
@@ -130,30 +133,49 @@ export default function TableManager() {
 
 
 
-  // Drag End: calcula posición relativa al plano sin conflicto de transforms
+  // Drag End: calcula posición relativa al plano y si se arrastra sobre otra mesa disponible, las UNE automáticamente (Drag & Drop)
   const handleDragEnd = (event, info, table) => {
     if (!containerRef.current) return;
     const containerRect = containerRef.current.getBoundingClientRect();
 
-    // Obtener la posición visual final del elemento arrastrado
     const targetEl = event.target?.closest('.cursor-grab') || event.target;
     if (!targetEl || !targetEl.getBoundingClientRect) return;
 
     const tableRect = targetEl.getBoundingClientRect();
-
-    // Centro del elemento arrastrado en coordenadas de pantalla
     const tableCenterX = tableRect.left + tableRect.width / 2;
     const tableCenterY = tableRect.top + tableRect.height / 2;
 
-    // Convertir el centro a porcentaje relativo al contenedor padre
     const rawX = ((tableCenterX - containerRect.left) / containerRect.width) * 100;
     const rawY = ((tableCenterY - containerRect.top) / containerRect.height) * 100;
 
-    // Limitar suavemente dentro de los bordes del plano (5% a 95%)
     const newXPercent = Math.round(Math.max(5, Math.min(95, rawX)) * 10) / 10;
     const newYPercent = Math.round(Math.max(5, Math.min(95, rawY)) * 10) / 10;
 
-    // Actualizar el estado con la nueva coordenada
+    // Si es mesa individual disponible, verificar colisión con otra disponible para unirlas instantáneamente
+    if (!table.group_id && table.status === 'disponible') {
+      const targetTable = tables.find((other) => {
+        if (other.id === table.id || other.group_id || other.status !== 'disponible') return false;
+        const dist = Math.hypot(other.x - newXPercent, other.y - newYPercent);
+        return dist < 9.0; // Umbral de proximidad de unión
+      });
+
+      if (targetTable) {
+        const newGroupId = `grp-${Date.now()}`;
+        const avgX = Math.round(((targetTable.x + newXPercent) / 2) * 10) / 10;
+        const avgY = Math.round(((targetTable.y + newYPercent) / 2) * 10) / 10;
+
+        setTables((prev) =>
+          prev.map((t) =>
+            t.id === table.id || t.id === targetTable.id
+              ? { ...t, group_id: newGroupId, x: avgX, y: avgY, orientation: 'horizontal' }
+              : t
+          )
+        );
+        notify(`¡Mesas ${table.id} y ${targetTable.id} unidas con Drag & Drop en Mesa Doble (6 personas)!`, 'success');
+        return;
+      }
+    }
+
     setTables((prev) =>
       prev.map((t) => {
         if (t.id === table.id) {
@@ -246,16 +268,9 @@ export default function TableManager() {
     notify('Orientación de mesa doble rotada', 'info');
   };
 
-  // Solicitar autorización para Dividir Mesa Doble
+  // Separar Mesa Doble directamente con 1 clic
   const requestUnmerge = (groupId) => {
-    setPendingAction({
-      type: 'unmerge',
-      id: groupId,
-      title: 'Desvincular / Dividir Mesa Doble'
-    });
-    setPinInput('');
-    setPinError(false);
-    setIsPinModalOpen(true);
+    executeUnmerge(groupId);
   };
 
   // Solicitar autorización para Liberar / Limpiar Mesa
@@ -313,7 +328,7 @@ export default function TableManager() {
         return t;
       });
     });
-    notify('Autorización concedida. Mesa doble dividida con éxito.', 'success');
+    notify('Mesa doble separada en 2 mesas individuales de 4 personas.', 'info');
   };
 
   // Guardar Reserva desde el Panel Lateral Derecho
@@ -466,7 +481,7 @@ export default function TableManager() {
             }`}
           >
             <Link2 className="w-4 h-4" />
-            <span>{isJoinMode ? 'Cancelar Unión' : 'Unir 2 Mesas'}</span>
+            <span>{isJoinMode ? 'Cancelar Unión' : 'Unir Mesas (o arrastra una sobre otra)'}</span>
           </button>
 
           {/* Confirmar Fusión cuando hay 2 seleccionadas */}
@@ -480,9 +495,29 @@ export default function TableManager() {
             </button>
           )}
 
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-[11px] font-semibold text-slate-300">
-            <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-            <span>QZ Tray Silencioso</span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={async () => {
+                const testPayload = {
+                  ticket_id: `TEST-${Math.floor(1000 + Math.random() * 9000)}`,
+                  customer_name: 'PRUEBA IMPRESIÓN',
+                  phone: '000-000-0000',
+                  party_size: 4,
+                  total_paid: 2000,
+                  event_name: activeEvent.name,
+                  tables: ['M-TEST'],
+                  printed_at: new Date().toLocaleTimeString()
+                };
+                notify('Enviando doble ticket de prueba a la impresora...', 'info');
+                await qzService.printDoubleTicket(testPayload);
+                notify('¡Prueba enviada! (Copia Sala + Copia Cliente)', 'success');
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[11px] font-semibold text-slate-200 transition-all"
+              title="Probar emisión de doble ticket ahora mismo"
+            >
+              <Printer className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Probar Impresión (2x)</span>
+            </button>
           </div>
         </div>
       </header>
@@ -645,34 +680,50 @@ export default function TableManager() {
       {/* MENÚ DE INFORMACIÓN Y RESERVA EN EL LATERAL DERECHO        */}
       {/* ========================================================= */}
       {isSidebarOpen && sidebarTable && (
-        <aside className="fixed inset-y-0 right-0 z-50 w-full max-w-sm bg-white text-slate-800 border-l border-slate-200 shadow-2xl flex flex-col font-sans animate-in slide-in-from-right duration-200">
-          {/* Header del Panel */}
-          <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className={`w-2.5 h-2.5 rounded-full ${sidebarTable.status === 'disponible' ? 'bg-emerald-500' : 'bg-rose-500'}`}></span>
-                <h3 className="font-extrabold text-base text-slate-900">
+        <aside className={`fixed top-20 right-4 z-40 transition-all duration-300 rounded-2xl shadow-2xl border border-slate-200/90 font-sans backdrop-blur-md ${
+          isSidebarMinimized 
+            ? 'w-72 bg-white/95' 
+            : 'w-80 sm:w-88 bg-white/98'
+        }`}>
+          {/* Header del Panel Compacto */}
+          <div className="p-3.5 border-b border-slate-100 flex items-center justify-between bg-slate-50/90 rounded-t-2xl">
+            <div className="flex items-center gap-2">
+              <span className={`w-2.5 h-2.5 rounded-full ${sidebarTable.status === 'disponible' ? 'bg-emerald-500 ring-2 ring-emerald-200' : 'bg-rose-500 ring-2 ring-rose-200'}`}></span>
+              <div>
+                <h3 className="font-black text-sm text-slate-900 leading-tight">
                   {sidebarTable.group_id ? 'Mesa Doble' : 'Mesa'} {sidebarTable.id}
                 </h3>
+                <span className="text-[11px] font-semibold text-slate-500 capitalize leading-none">
+                  <strong className={sidebarTable.status === 'disponible' ? 'text-emerald-700' : 'text-rose-700'}>{sidebarTable.status}</strong>
+                  {' • '}{sidebarTable.group_id ? '6 pax' : '4 pax'}
+                </span>
               </div>
-              <span className="text-xs font-semibold text-slate-500 capitalize block mt-0.5">
-                Estado Actual: <strong className={sidebarTable.status === 'disponible' ? 'text-emerald-700' : 'text-rose-700'}>{sidebarTable.status}</strong>
-                {' • '}Capacidad: <strong>{sidebarTable.group_id ? '6' : '4'} comensales</strong>
-              </span>
             </div>
-            <button
-              onClick={() => {
-                setIsSidebarOpen(false);
-                setSidebarTable(null);
-              }}
-              className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-200/50 transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
+
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setIsSidebarMinimized(!isSidebarMinimized)}
+                className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-200/60 transition-colors"
+                title={isSidebarMinimized ? 'Expandir menú' : 'Minimizar menú para que no estorbe'}
+              >
+                {isSidebarMinimized ? <Maximize2 className="w-4 h-4" /> : <Minimize2 className="w-4 h-4" />}
+              </button>
+              <button
+                onClick={() => {
+                  setIsSidebarOpen(false);
+                  setSidebarTable(null);
+                }}
+                className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors"
+                title="Cerrar panel"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
           </div>
 
           {/* Contenido Dinámico: Formulario para Disponible o Info Read-Only para Ocupada */}
-          <div className="flex-1 p-5 overflow-y-auto space-y-4">
+          <div className={`p-4 overflow-y-auto max-h-[calc(100vh-10rem)] space-y-3 ${isSidebarMinimized ? "hidden" : "block"}`}>
+
             {sidebarTable.status === 'disponible' ? (
               /* FORMULARIO DE CAPTURA RÁPIDA (EN EL LATERAL DERECHO) */
               <form onSubmit={handleSaveReservation} className="space-y-4">
@@ -744,7 +795,7 @@ export default function TableManager() {
                     className="w-full flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-slate-900 text-white font-bold text-xs uppercase tracking-wider hover:bg-slate-800 shadow-md transition-all disabled:opacity-50"
                   >
                     <Printer className="w-4 h-4" />
-                    <span>{isPrinting ? 'Imprimiendo...' : 'Confirmar & Imprimir [Enter]'}</span>
+                    <span>{isPrinting ? 'Imprimiendo 2 copias...' : 'Confirmar & Imprimir Doble Ticket (2x)'}</span>
                   </button>
                 </div>
               </form>
@@ -770,13 +821,45 @@ export default function TableManager() {
                   </div>
                 </div>
 
-                <button
-                  onClick={() => requestReleaseTable(sidebarTable.id)}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-white border border-slate-200 text-slate-800 font-bold text-xs hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 shadow-2xs transition-all"
-                >
-                  <Trash2 className="w-4 h-4 text-rose-500" />
-                  <span>Liberar / Limpiar Mesa</span>
-                </button>
+                <div className="space-y-2 pt-2">
+                  <button
+                    onClick={async () => {
+                      setIsPrinting(true);
+                      try {
+                        const ticketPayload = {
+                          ticket_id: `TKT-${Math.floor(1000 + Math.random() * 9000)}`,
+                          customer_name: sidebarTable.customer_name || 'Cliente en Sala',
+                          phone: sidebarTable.phone || 'N/A',
+                          party_size: sidebarTable.party_size || (sidebarTable.group_id ? 6 : 4),
+                          total_paid: sidebarTable.total_paid || 2000,
+                          event_name: activeEvent.name,
+                          time_scheduled: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                          tables: [sidebarTable.id],
+                          printed_at: new Date().toLocaleTimeString()
+                        };
+                        await qzService.printDoubleTicket(ticketPayload);
+                        notify('Doble ticket reimpreso (Copia Sala + Copia Cliente)', 'success');
+                      } catch (err) {
+                        notify(err.message, 'error');
+                      } finally {
+                        setIsPrinting(false);
+                      }
+                    }}
+                    disabled={isPrinting}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-sm transition-all disabled:opacity-50"
+                  >
+                    <Printer className="w-4 h-4" />
+                    <span>{isPrinting ? 'Imprimiendo...' : 'Reimprimir Doble Ticket (2x)'}</span>
+                  </button>
+
+                  <button
+                    onClick={() => requestReleaseTable(sidebarTable.id)}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-700 font-bold text-xs hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 shadow-2xs transition-all"
+                  >
+                    <Trash2 className="w-4 h-4 text-rose-500" />
+                    <span>Liberar / Limpiar Mesa</span>
+                  </button>
+                </div>
               </div>
             )}
           </div>
