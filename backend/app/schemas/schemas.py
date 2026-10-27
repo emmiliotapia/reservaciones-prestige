@@ -83,6 +83,8 @@ class AnalyticsSummary(BaseModel):
     active_reservations: int
     table_occupancy_rate: float
     status_breakdown: Dict[str, int]
+    hourly_distribution: Dict[str, int]
+    recent_tickets: List[Dict[str, Any]]
 
 # Event Schemas
 class EventCreate(BaseModel):
@@ -102,5 +104,3 @@ class EventRead(BaseModel):
 
     class Config:
         from_attributes = True
-    hourly_distribution: Dict[str, int]
-    recent_tickets: List[Dict[str, Any]]
