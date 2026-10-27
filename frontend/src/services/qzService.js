@@ -14,7 +14,15 @@ class QZService {
 
   async init(forceReconnect = false) {
     if (forceReconnect) {
+      if (this.qz && this.qz.websocket && this.qz.websocket.isActive()) {
+        try {
+          await this.qz.websocket.disconnect();
+        } catch {
+          // ignore
+        }
+      }
       this.initPromise = null;
+      this.connected = false;
     }
     if (this.initPromise) return this.initPromise;
 
@@ -23,15 +31,15 @@ class QZService {
         const qzModule = await import('qz-tray');
         this.qz = qzModule.default || qzModule;
 
-        // Configuración de certificados o firmas en blanco para entornos locales
+        // Configuración de firmas en blanco para entornos locales
         this.qz.security.setCertificatePromise(() => Promise.resolve(""));
         this.qz.security.setSignaturePromise(() => Promise.resolve(""));
 
-        // Timeout helper de 3.5 segundos para que la UI jamás se quede congelada
-        const withTimeout = (promise, ms = 3500) => {
+        // Helper con timeout estricto de 2.5s
+        const withTimeout = (promise, ms = 2500) => {
           return Promise.race([
             promise,
-            new Promise((_, reject) => setTimeout(() => reject(new Error('Tiempo de espera agotado al conectar')), ms))
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout de conexión')), ms))
           ]);
         };
 
@@ -41,43 +49,49 @@ class QZService {
               this.qz.websocket.connect({
                 host: 'localhost',
                 usingSecure: true,
-                port: { secure: [8181, 8283], insecure: [8182, 8183] },
+                port: { secure: [8181], insecure: [8182] },
                 retries: 0,
                 delay: 0
               }),
-              3500
+              2500
             );
           } catch (e1) {
-            console.warn("Fallo WSS 8181, probando conexión nativa:", e1.message);
+            console.warn("Fallo conexión segura WSS 8181:", e1?.message || e1);
             if (!this.qz.websocket.isActive()) {
-              await withTimeout(
-                this.qz.websocket.connect({
-                  retries: 0,
-                  delay: 0
-                }),
-                2500
-              );
+              try {
+                await withTimeout(
+                  this.qz.websocket.connect({
+                    retries: 0,
+                    delay: 0
+                  }),
+                  2000
+                );
+              } catch (e2) {
+                console.warn("Fallo conexión nativa default:", e2?.message || e2);
+              }
             }
           }
         }
 
-        this.connected = this.qz.websocket.isActive();
-        console.log("QZ Tray conectado exitosamente via WebSocket");
-
-        // Si no hay impresora seleccionada por el usuario en localStorage, buscar la default
-        if (!this.printerName && this.connected) {
-          try {
-            const defPrinter = await withTimeout(this.qz.printers.getDefault(), 2000);
-            this.printerName = defPrinter || "POS-Printer";
-            localStorage.setItem('pos_selected_printer', this.printerName);
-          } catch {
-            this.printerName = "Generic / Text Only";
+        this.connected = Boolean(this.qz && this.qz.websocket && this.qz.websocket.isActive());
+        
+        if (this.connected) {
+          console.log("QZ Tray conectado exitosamente via WebSocket");
+          // Si no hay impresora seleccionada, buscar la default rápidamente (máx 1.5s)
+          if (!this.printerName) {
+            try {
+              const defPrinter = await withTimeout(this.qz.printers.getDefault(), 1500);
+              this.printerName = defPrinter || "POS-Printer";
+              localStorage.setItem('pos_selected_printer', this.printerName);
+            } catch {
+              this.printerName = "Generic / Text Only";
+            }
           }
         }
 
         return this.connected;
       } catch (err) {
-        console.warn("QZ Tray no se pudo conectar:", err.message);
+        console.warn("QZ Tray no se pudo conectar:", err?.message || err);
         this.connected = false;
         return false;
       }
@@ -90,9 +104,15 @@ class QZService {
     try {
       const ready = await this.init();
       if (!ready || !this.qz) return [];
-      return await this.qz.printers.find();
+      const withTimeout = (promise, ms = 2000) => {
+        return Promise.race([
+          promise,
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout al listar impresoras')), ms))
+        ]);
+      };
+      return await withTimeout(this.qz.printers.find(), 2000);
     } catch (e) {
-      console.warn("No se pudieron listar impresoras:", e);
+      console.warn("No se pudieron listar impresoras:", e?.message || e);
       return [];
     }
   }

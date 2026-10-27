@@ -23,32 +23,41 @@ export default function PrinterSettingsModal({ isOpen, onClose, onTestPrint }) {
   const [statusMsg, setStatusMsg] = useState('');
   const [isTesting, setIsTesting] = useState(false);
 
-  // Cargar estado inicial y lista de impresoras
+  // Cargar estado inicial y lista de impresoras con timeout de seguridad
   const checkStatusAndPrinters = async (forceRefresh = false) => {
+    if (isLoading) return;
     setIsLoading(true);
-    setStatusMsg('Buscando conexión con servicio POS...');
+    setStatusMsg('Buscando conexión con servicio POS local...');
+
+    // Temporizador de seguridad para desbloquear la UI pase lo que pase
+    const safetyTimeout = setTimeout(() => {
+      setIsLoading(false);
+      setStatusMsg('Tiempo de espera agotado. Puedes usar la impresión de navegador o abrir https://localhost:8181.');
+    }, 4000);
+
     try {
       const ready = await qzService.init(forceRefresh);
-      setIsConnected(ready);
+      setIsConnected(Boolean(ready));
       if (ready) {
         const list = await qzService.getPrintersList();
-        setPrinters(list);
+        setPrinters(list || []);
         const saved = qzService.getSavedPrinter();
-        if (saved && list.includes(saved)) {
+        if (saved && list && list.includes(saved)) {
           setSelectedPrinter(saved);
-        } else if (list.length > 0) {
+        } else if (list && list.length > 0) {
           const first = list[0];
           setSelectedPrinter(first);
           qzService.setPrinter(first);
         }
-        setStatusMsg('Conexión establecida con éxito');
+        setStatusMsg('Conexión directa establecida con éxito.');
       } else {
-        setStatusMsg('Servicio directo local (QZ Tray) no detectado.');
+        setStatusMsg('QZ Tray no respondió en localhost:8181. Se utilizará impresión directa del navegador.');
       }
     } catch (e) {
       setIsConnected(false);
-      setStatusMsg('Error al verificar impresoras: ' + e.message);
+      setStatusMsg('Aviso: ' + (e?.message || 'No se pudo conectar a QZ Tray'));
     } finally {
+      clearTimeout(safetyTimeout);
       setIsLoading(false);
     }
   };

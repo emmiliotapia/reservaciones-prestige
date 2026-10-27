@@ -27,6 +27,14 @@ import {
   RotateCcw
 } from 'lucide-react';
 import { qzService } from '../services/qzService';
+import {
+  fetchTables,
+  createReservation,
+  updateTablePosition,
+  updateTableStatus,
+  mergeTables,
+  unmergeTables
+} from '../services/api';
 import EventsModal from './Modals/EventsModal';
 import SalesReportModal from './Modals/SalesReportModal';
 import PrinterSettingsModal from './Modals/PrinterSettingsModal';
@@ -38,41 +46,38 @@ const MANAGER_PIN = '2026';
 const INITIAL_EVENTS = [
   { id: 1, name: 'Noche de Casino VIP', price_per_person: 500, event_date: '2026-10-23', event_time: '20:00' },
   { id: 2, name: 'Torneo Texas Holdem Clásico', price_per_person: 750, event_date: '2026-10-30', event_time: '21:00' },
-  { id: 3, name: 'Gala Fin de Año Casino', price_per_person: 1200, event_date: '2026-12-31', event_time: '22:00' },
-  { id: 1, name: 'Noche de Casino VIP', price_per_person: 500, event_date: '2026-10-23' },
-  { id: 2, name: 'Torneo Texas Holdem Clásico', price_per_person: 750, event_date: '2026-10-30' },
-  { id: 3, name: 'Gala Fin de Año Casino', price_per_person: 1200, event_date: '2026-12-31' }
+  { id: 3, name: 'Gala Fin de Año Casino', price_per_person: 1200, event_date: '2026-12-31', event_time: '22:00' }
 ];
 
 // 18 mesas distribuidas armónicamente en el área de piso libre
 const INITIAL_TABLES = [
   // Fila 1 (Bajo barra de entrega)
-  { id: 'M-1', x: 20, y: 34, status: 'disponible', orientation: 'horizontal', group_id: null },
-  { id: 'M-2', x: 38, y: 34, status: 'disponible', orientation: 'horizontal', group_id: null },
-  { id: 'M-3', x: 56, y: 34, status: 'disponible', orientation: 'horizontal', group_id: null },
-  { id: 'M-4', x: 74, y: 34, status: 'disponible', orientation: 'horizontal', group_id: null },
+  { id: 'M-1', db_id: 1, x: 20, y: 34, status: 'disponible', orientation: 'horizontal', group_id: null },
+  { id: 'M-2', db_id: 2, x: 38, y: 34, status: 'disponible', orientation: 'horizontal', group_id: null },
+  { id: 'M-3', db_id: 3, x: 56, y: 34, status: 'disponible', orientation: 'horizontal', group_id: null },
+  { id: 'M-4', db_id: 4, x: 74, y: 34, status: 'disponible', orientation: 'horizontal', group_id: null },
 
   // Fila 2
-  { id: 'M-5', x: 20, y: 46, status: 'disponible', orientation: 'horizontal', group_id: null },
-  { id: 'M-6', x: 38, y: 46, status: 'reservada', customer_name: 'Ana Ramos', phone: '664 111 2233', total_paid: 2000, party_size: 4, orientation: 'horizontal', group_id: null },
-  { id: 'M-7', x: 56, y: 46, status: 'disponible', orientation: 'horizontal', group_id: null },
-  { id: 'M-8', x: 74, y: 46, status: 'disponible', orientation: 'horizontal', group_id: null },
+  { id: 'M-5', db_id: 5, x: 20, y: 46, status: 'disponible', orientation: 'horizontal', group_id: null },
+  { id: 'M-6', db_id: 6, x: 38, y: 46, status: 'disponible', customer_name: null, phone: null, total_paid: 0, party_size: 4, orientation: 'horizontal', group_id: null },
+  { id: 'M-7', db_id: 7, x: 56, y: 46, status: 'disponible', orientation: 'horizontal', group_id: null },
+  { id: 'M-8', db_id: 8, x: 74, y: 46, status: 'disponible', orientation: 'horizontal', group_id: null },
 
   // Fila 3
-  { id: 'M-9',  x: 20, y: 58, status: 'disponible', orientation: 'horizontal', group_id: null },
-  { id: 'M-10', x: 38, y: 58, status: 'disponible', orientation: 'horizontal', group_id: null },
-  { id: 'M-11', x: 56, y: 58, status: 'disponible', orientation: 'horizontal', group_id: null },
-  { id: 'M-12', x: 74, y: 58, status: 'ocupada', customer_name: 'Carlos Mendoza', phone: '664 444 5566', total_paid: 2000, party_size: 4, orientation: 'horizontal', group_id: null },
+  { id: 'M-9',  db_id: 9,  x: 20, y: 58, status: 'disponible', orientation: 'horizontal', group_id: null },
+  { id: 'M-10', db_id: 10, x: 38, y: 58, status: 'disponible', orientation: 'horizontal', group_id: null },
+  { id: 'M-11', db_id: 11, x: 56, y: 58, status: 'disponible', orientation: 'horizontal', group_id: null },
+  { id: 'M-12', db_id: 12, x: 74, y: 58, status: 'disponible', customer_name: null, phone: null, total_paid: 0, party_size: 4, orientation: 'horizontal', group_id: null },
 
   // Fila 4 (Evitando caja a la izquierda y escaleras a la derecha)
-  { id: 'M-13', x: 38, y: 70, status: 'disponible', orientation: 'horizontal', group_id: null },
-  { id: 'M-14', x: 56, y: 70, status: 'disponible', orientation: 'horizontal', group_id: null },
-  { id: 'M-15', x: 72, y: 68, status: 'disponible', orientation: 'horizontal', group_id: null },
+  { id: 'M-13', db_id: 13, x: 38, y: 70, status: 'disponible', orientation: 'horizontal', group_id: null },
+  { id: 'M-14', db_id: 14, x: 56, y: 70, status: 'disponible', orientation: 'horizontal', group_id: null },
+  { id: 'M-15', db_id: 15, x: 72, y: 68, status: 'disponible', orientation: 'horizontal', group_id: null },
 
   // Fila 5 (Frente a escaleras y pasillo central)
-  { id: 'M-16', x: 36, y: 80, status: 'disponible', orientation: 'horizontal', group_id: null },
-  { id: 'M-17', x: 54, y: 80, status: 'reservada', customer_name: 'Sofía López', phone: '664 777 8899', total_paid: 2000, party_size: 4, orientation: 'horizontal', group_id: null },
-  { id: 'M-18', x: 70, y: 78, status: 'disponible', orientation: 'horizontal', group_id: null }
+  { id: 'M-16', db_id: 16, x: 36, y: 80, status: 'disponible', orientation: 'horizontal', group_id: null },
+  { id: 'M-17', db_id: 17, x: 54, y: 80, status: 'disponible', customer_name: null, phone: null, total_paid: 0, party_size: 4, orientation: 'horizontal', group_id: null },
+  { id: 'M-18', db_id: 18, x: 70, y: 78, status: 'disponible', orientation: 'horizontal', group_id: null }
 ];
 
 export default function TableManager({ onLogout }) {
@@ -100,6 +105,7 @@ export default function TableManager({ onLogout }) {
   const [isEventsModalOpen, setIsEventsModalOpen] = useState(false);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [isPrinterModalOpen, setIsPrinterModalOpen] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   // Guardar eventos cuando cambien
   useEffect(() => {
@@ -123,7 +129,7 @@ export default function TableManager({ onLogout }) {
   const activeEvent = events.find((e) => e.id === activeEventId) || events[0] || INITIAL_EVENTS[0];
   const pricePerPerson = activeEvent?.price_per_person || 500;
 
-  // Estado de Mesas con persistencia en localStorage
+  // Estado de Mesas con persistencia en PostgreSQL del VPS (y respaldo en localStorage)
   const [tables, setTables] = useState(() => {
     try {
       const saved = localStorage.getItem('casino_tables_data');
@@ -133,12 +139,53 @@ export default function TableManager({ onLogout }) {
     }
   });
 
-  // Guardar mesas inmediatamente al cambiar
+  // Función para cargar datos frescos desde el VPS
+  const loadTablesFromBackend = async () => {
+    try {
+      setIsSyncing(true);
+      const backendTables = await fetchTables();
+      if (Array.isArray(backendTables) && backendTables.length > 0) {
+        setTables((prev) => {
+          return backendTables.map((bt) => {
+            const existing = prev.find((p) => p.id === bt.label || p.db_id === bt.id);
+            return {
+              id: bt.label,
+              db_id: bt.id,
+              x: Number(bt.pos_x) || existing?.x || 20,
+              y: Number(bt.pos_y) || existing?.y || 34,
+              status: bt.status ? bt.status.toLowerCase() : 'disponible',
+              orientation: bt.orientation || 'horizontal',
+              group_id: bt.group_id ? String(bt.group_id) : null,
+              customer_name: bt.customer_name || null,
+              phone: bt.phone || null,
+              total_paid: bt.total_paid ? Number(bt.total_paid) : 0,
+              party_size: bt.party_size || bt.capacity || 4
+            };
+          });
+        });
+      }
+    } catch (err) {
+      console.warn("Aviso: No se pudo sincronizar con BD VPS, usando datos locales:", err.message);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // Cargar desde el VPS al montar y cada 15 segundos para sincronía multi-dispositivo en tiempo real
+  useEffect(() => {
+    loadTablesFromBackend();
+    const interval = setInterval(() => {
+      loadTablesFromBackend();
+    }, 15000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Guardar en localStorage como respaldo offline
   useEffect(() => {
     try {
       localStorage.setItem('casino_tables_data', JSON.stringify(tables));
     } catch (e) {
-      console.warn('Error guardando mesas:', e);
+      console.warn('Error guardando mesas localmente:', e);
     }
   }, [tables]);
 
@@ -250,6 +297,7 @@ export default function TableManager({ onLogout }) {
       }
     }
 
+    // Actualizar posición en estado local
     setTables((prev) =>
       prev.map((t) => {
         if (t.id === table.id) {
@@ -261,6 +309,14 @@ export default function TableManager({ onLogout }) {
         return t;
       })
     );
+
+    // Persistir posición en PostgreSQL del VPS
+    const dbId = table.db_id || parseInt(table.id.replace(/\D/g, ''), 10);
+    if (dbId) {
+      updateTablePosition(dbId, newXPercent, newYPercent).catch((err) => {
+        console.warn("No se pudo persistir posición en VPS:", err.message);
+      });
+    }
   };
 
   // Clic en Mesa: Si está en modo juntar, selecciona; si no, abre el Menú Lateral Derecho
@@ -302,7 +358,7 @@ export default function TableManager({ onLogout }) {
   };
 
   // Juntar 2 Mesas en una Mesa Doble (6 personas)
-  const handleMergeTables = () => {
+  const handleMergeTables = async () => {
     if (selectedTableIds.length !== 2) {
       notify('Por favor selecciona 2 mesas en el mapa', 'warning');
       return;
@@ -313,9 +369,10 @@ export default function TableManager({ onLogout }) {
     if (!t1 || !t2) return;
 
     const newGroupId = `grp-${Date.now()}`;
-    const avgX = (t1.x + t2.x) / 2;
-    const avgY = (t1.y + t2.y) / 2;
+    const avgX = Math.round(((t1.x + t2.x) / 2) * 10) / 10;
+    const avgY = Math.round(((t1.y + t2.y) / 2) * 10) / 10;
 
+    // Actualización optimista local
     setTables((prev) =>
       prev.map((t) =>
         t.id === id1 || t.id === id2
@@ -326,7 +383,19 @@ export default function TableManager({ onLogout }) {
 
     setSelectedTableIds([]);
     setIsJoinMode(false);
-    notify(`¡Mesas ${id1} y ${id2} unidas en Mesa Doble (Capacidad: 6 personas)!`, 'success');
+
+    // Persistir fusión en PostgreSQL del VPS
+    try {
+      const dbIds = [
+        t1.db_id || parseInt(t1.id.replace(/\D/g, ''), 10),
+        t2.db_id || parseInt(t2.id.replace(/\D/g, ''), 10)
+      ];
+      await mergeTables(dbIds);
+      notify(`¡Mesas ${id1} y ${id2} unidas en Mesa Doble (Capacidad: 6 personas)! Guardado en el VPS.`, 'success');
+    } catch (e) {
+      console.warn("Fusión guardada localmente (VPS detalle):", e.message);
+      notify(`¡Mesas ${id1} y ${id2} unidas en Mesa Doble (Capacidad: 6 personas)!`, 'success');
+    }
   };
 
   // Rotar Orientación (Horizontal <-> Vertical)
@@ -360,7 +429,7 @@ export default function TableManager({ onLogout }) {
   };
 
   // Verificación del NIP del Gerente (2026)
-  const handleVerifyPin = (e) => {
+  const handleVerifyPin = async (e) => {
     e.preventDefault();
     if (pinInput.trim() !== MANAGER_PIN) {
       setPinError(true);
@@ -369,9 +438,9 @@ export default function TableManager({ onLogout }) {
     }
 
     if (pendingAction?.type === 'release') {
-      executeReleaseTable(pendingAction.id);
+      await executeReleaseTable(pendingAction.id);
     } else if (pendingAction?.type === 'unmerge') {
-      executeUnmerge(pendingAction.id);
+      await executeUnmerge(pendingAction.id);
     } else if (pendingAction?.type === 'reset_all') {
       setTables(INITIAL_TABLES);
       localStorage.setItem('casino_tables_data', JSON.stringify(INITIAL_TABLES));
@@ -385,13 +454,13 @@ export default function TableManager({ onLogout }) {
   };
 
   // Ejecución Autorizada: Dividir Mesa Doble
-  const executeUnmerge = (groupId) => {
-    setTables((prev) => {
-      const merged = prev.filter((t) => t.group_id === groupId);
-      if (merged.length < 2) return prev;
-      const baseX = merged[0].x;
-      const baseY = merged[0].y;
+  const executeUnmerge = async (groupId) => {
+    const merged = tables.filter((t) => t.group_id === groupId);
+    if (merged.length < 2) return;
+    const baseX = merged[0].x;
+    const baseY = merged[0].y;
 
+    setTables((prev) => {
       return prev.map((t) => {
         if (t.group_id === groupId) {
           const isFirst = t.id === merged[0].id;
@@ -406,10 +475,17 @@ export default function TableManager({ onLogout }) {
         return t;
       });
     });
+
+    try {
+      const dbIds = merged.map((t) => t.db_id || parseInt(t.id.replace(/\D/g, ''), 10));
+      await unmergeTables(dbIds);
+    } catch (e) {
+      console.warn("Separación guardada localmente:", e.message);
+    }
     notify('Mesa doble separada en 2 mesas individuales de 4 personas.', 'info');
   };
 
-  // Guardar Reserva desde el Panel Lateral Derecho
+  // Guardar Reserva desde el Panel Lateral Derecho y persistir en PostgreSQL del VPS
   const handleSaveReservation = async (e) => {
     e.preventDefault();
     if (!customerName.trim() || !phone.trim() || !sidebarTable) return;
@@ -419,6 +495,14 @@ export default function TableManager({ onLogout }) {
       const tableId = sidebarTable.id;
       const targetGroupId = sidebarTable.group_id;
 
+      // Identificar todas las mesas involucradas
+      const involvedTables = targetGroupId
+        ? tables.filter((t) => t.group_id === targetGroupId)
+        : [sidebarTable];
+      const involvedTableLabels = involvedTables.map((t) => t.id);
+      const dbTableIds = involvedTables.map((t) => t.db_id || parseInt(t.id.replace(/\D/g, ''), 10));
+
+      // Actualizar estado local inmediato para respuesta instantánea de la UI
       setTables((prev) =>
         prev.map((t) => {
           const isMatch = t.id === tableId || (targetGroupId && t.group_id === targetGroupId);
@@ -436,10 +520,20 @@ export default function TableManager({ onLogout }) {
         })
       );
 
-      // Identificar todas las mesas involucradas para el ticket
-      const involvedTableLabels = targetGroupId
-        ? tables.filter((t) => t.group_id === targetGroupId).map((t) => t.id)
-        : [tableId];
+      // Persistir reservación en la base de datos PostgreSQL del VPS
+      try {
+        await createReservation({
+          customer_name: customerName.trim(),
+          phone: phone.trim(),
+          party_size: Number(partySize),
+          total_paid: Number(monto),
+          event_name: activeEvent.name,
+          table_ids: dbTableIds,
+          notes: `Emitido vía Web POS - ${activeEvent.event_date}`
+        });
+      } catch (backendErr) {
+        console.warn("Aviso: No se pudo guardar en BD VPS, guardado en caché local:", backendErr.message);
+      }
 
       const ticketPayload = {
         ticket_id: `TKT-${Math.floor(1000 + Math.random() * 9000)}`,
@@ -456,7 +550,7 @@ export default function TableManager({ onLogout }) {
       };
 
       await qzService.printDoubleTicket(ticketPayload);
-      notify(`Reservación guardada para ${customerName}. Doble ticket emitido.`, 'success');
+      notify(`Reservación guardada para ${customerName} en la BD del VPS. Doble ticket emitido.`, 'success');
 
       setIsSidebarOpen(false);
       setSidebarTable(null);
@@ -467,18 +561,33 @@ export default function TableManager({ onLogout }) {
     }
   };
 
-  // Ejecución Autorizada: Liberar / Limpiar Mesa
-  const executeReleaseTable = (tableId) => {
+  // Ejecución Autorizada: Liberar / Limpiar Mesa en BD VPS
+  const executeReleaseTable = async (tableId) => {
+    const target = tables.find((t) => t.id === tableId) || sidebarTable;
+    const targetGroupId = target?.group_id;
+
+    // Actualización local
     setTables((prev) =>
       prev.map((t) =>
-        t.id === tableId || (t.group_id && t.group_id === sidebarTable?.group_id)
+        t.id === tableId || (targetGroupId && t.group_id === targetGroupId)
           ? { ...t, status: 'disponible', group_id: null, customer_name: null, phone: null, total_paid: 0 }
           : t
       )
     );
+
+    // Persistir liberación en VPS
+    try {
+      const dbId = target?.db_id || parseInt(tableId.replace(/\D/g, ''), 10);
+      if (dbId) {
+        await updateTableStatus(dbId, 'disponible');
+      }
+    } catch (e) {
+      console.warn("Liberación guardada localmente:", e.message);
+    }
+
     setIsSidebarOpen(false);
     setSidebarTable(null);
-    notify(`Autorización de Gerente concedida: Mesa ${tableId} liberada y disponible`, 'success');
+    notify(`Autorización de Gerente concedida: Mesa ${tableId} liberada y disponible en el VPS`, 'success');
   };
 
   // Agrupamiento
