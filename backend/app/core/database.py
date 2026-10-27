@@ -52,8 +52,8 @@ def get_architectural_seed_layout():
 def init_db():
     SQLModel.metadata.create_all(engine)
     from app.models.models import TableNode, TableStatus
+    from datetime import datetime
     
-    from datetime import datetime, timezone
     with Session(engine) as session:
         existing = session.exec(select(TableNode)).all()
         if not existing:
@@ -64,7 +64,7 @@ def init_db():
                     pos_y=t_data["pos_y"],
                     capacity=t_data["capacity"],
                     status=TableStatus.DISPONIBLE,
-                    updated_at=datetime.now(timezone.utc)
+                    updated_at=datetime.utcnow()
                 )
                 session.add(table)
             session.commit()
