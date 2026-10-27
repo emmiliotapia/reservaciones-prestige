@@ -42,11 +42,14 @@ Sistema integral de gestión de reservas, punto de venta (POS) y mapeo interacti
 ---
 
 ### 4. Seguridad y Control de Gerencia (NIP Maestro)
-* **NIP Maestro:** `2026`
+* **NIPs Autorizados:**
+  * **NIP Gerente:** `2026`
+  * **NIP Maestro Admin:** `9999`
 * Acciones protegidas:
-  1. **Liberación / Limpieza de Mesas ocupadas.**
-  2. **Eliminación de Eventos.**
-  3. **Reinicio de Fábrica del Plano de Mesas.**
+  1. **Borrado de Registros de Venta / Reservaciones:** Elimina el registro del historial de ventas y libera automáticamente las mesas asociadas.
+  2. **Liberación / Limpieza de Mesas ocupadas en sala.**
+  3. **Eliminación de Eventos.**
+  4. **Reinicio de Fábrica del Plano de Mesas.**
 
 ---
 

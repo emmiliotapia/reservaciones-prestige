@@ -18,6 +18,14 @@ export async function fetchReservations(activeOnly = true) {
   return res.json();
 }
 
+export async function deleteReservationApi(reservationId) {
+  const res = await fetch(`${API_BASE}/reservations/${reservationId}`, {
+    method: 'DELETE'
+  });
+  if (!res.ok) throw new Error('Error al eliminar reservación');
+  return res.json();
+}
+
 export async function fetchEvents() {
   const res = await fetch(`${API_BASE}/events`);
   if (!res.ok) throw new Error('Error al obtener lista de eventos');

@@ -111,3 +111,29 @@ def list_reservations(active_only: bool = True, session: Session = Depends(get_s
     if active_only:
         stmt = stmt.where(Reservation.active == True)
     return session.exec(stmt.order_by(Reservation.time_scheduled.desc())).all()
+
+@router.delete("/{reservation_id}")
+def delete_reservation(reservation_id: int, session: Session = Depends(get_session)):
+    """Elimina o cancela una reservación registrada y libera las mesas asociadas."""
+    res = session.get(Reservation, reservation_id)
+    if not res:
+        raise HTTPException(status_code=404, detail="Reservación no encontrada")
+    
+    # Liberar las mesas asociadas a esta reservación
+    tables = session.exec(
+        select(TableNode).where(
+            (TableNode.current_reservation_id == reservation_id) |
+            (TableNode.group_id == res.group_id)
+        )
+    ).all()
+
+    for t in tables:
+        t.status = TableStatus.DISPONIBLE
+        t.current_reservation_id = None
+        t.updated_at = datetime.utcnow()
+        session.add(t)
+
+    res.active = False
+    session.add(res)
+    session.commit()
+    return {"message": "Reservación eliminada y mesas liberadas correctamente", "id": reservation_id}

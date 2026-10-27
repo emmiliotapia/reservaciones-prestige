@@ -9,7 +9,8 @@ import {
   TrendingUp,
   Receipt,
   Printer,
-  RefreshCw
+  RefreshCw,
+  Trash2
 } from 'lucide-react';
 import { fetchReservations } from '../../services/api';
 
@@ -18,7 +19,8 @@ export default function SalesReportModal({
   onClose,
   activeEvent,
   events,
-  tables
+  tables,
+  onDeleteReservation
 }) {
   const [selectedFilterEventName, setSelectedFilterEventName] = useState(
     activeEvent ? activeEvent.name : 'all'
@@ -250,6 +252,7 @@ export default function SalesReportModal({
                     <th className="py-2.5 px-3.5 text-center">Pax</th>
                     <th className="py-2.5 px-3.5 text-right">Pagado</th>
                     <th className="py-2.5 px-3.5 text-center">Estado</th>
+                    <th className="py-2.5 px-3.5 text-center">Acción</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium">
@@ -278,6 +281,21 @@ export default function SalesReportModal({
                           <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 capitalize">
                             Confirmado
                           </span>
+                        </td>
+                        <td className="py-2.5 px-3.5 text-center">
+                          {onDeleteReservation && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                onDeleteReservation(r);
+                                onClose();
+                              }}
+                              className="p-1 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors"
+                              title="Borrar registro de venta (Requiere NIP)"
+                            >
+                              <Trash2 className="w-4 h-4 inline" />
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ))

@@ -36,14 +36,17 @@ import {
   unmergeTables,
   fetchEvents,
   createEventApi,
-  deleteEventApi
+  deleteEventApi,
+  deleteReservationApi
 } from '../services/api';
 import EventsModal from './Modals/EventsModal';
 import SalesReportModal from './Modals/SalesReportModal';
 import PrinterSettingsModal from './Modals/PrinterSettingsModal';
 
-// NIP de Autorización del Gerente
+// NIPs de Autorización (Gerente: 2026, Admin Maestro: 9999)
 const MANAGER_PIN = '2026';
+const ADMIN_PIN = '9999';
+const VALID_PINS = [MANAGER_PIN, ADMIN_PIN];
 
 // Lista de eventos iniciales (solo Día Prestige según solicitud del usuario)
 const INITIAL_EVENTS = [
@@ -331,6 +334,32 @@ export default function TableManager({ onLogout }) {
     notify('Evento eliminado correctamente de la base de datos.', 'info');
   };
 
+  // Solicitar autorización para Borrar un Registro de Venta / Reservación
+  const requestDeleteReservation = (reservation) => {
+    setPendingAction({
+      type: 'delete_reservation',
+      id: reservation.id,
+      extra: reservation,
+      title: `Eliminar Reservación ${reservation.customer_name ? `de ${reservation.customer_name}` : `Folio #${reservation.id}`}`
+    });
+    setPinInput('');
+    setPinError(false);
+    setIsPinModalOpen(true);
+  };
+
+  // Ejecución Autorizada: Eliminar Reservación y Liberar Mesas en PostgreSQL
+  const executeDeleteReservation = async (reservationId) => {
+    try {
+      await deleteReservationApi(reservationId);
+      // Recargar mesas del backend inmediatamente
+      await loadTablesFromBackend(activeEvent);
+      notify(`Reservación Folio #${reservationId} eliminada correctamente. Mesas liberadas.`, 'success');
+    } catch (e) {
+      console.warn("Error al eliminar reservación:", e.message);
+      notify(`No se pudo eliminar la reservación: ${e.message}`, 'error');
+    }
+  };
+
 
 
   // Drag End: calcula posición relativa al plano y si se arrastra sobre otra mesa disponible, las UNE automáticamente (Drag & Drop)
@@ -523,12 +552,12 @@ export default function TableManager({ onLogout }) {
     setIsPinModalOpen(true);
   };
 
-  // Verificación del NIP del Gerente (2026)
+  // Verificación del NIP de Autorización (2026 o 9999)
   const handleVerifyPin = async (e) => {
     e.preventDefault();
-    if (pinInput.trim() !== MANAGER_PIN) {
+    if (!VALID_PINS.includes(pinInput.trim())) {
       setPinError(true);
-      notify('NIP de Gerente incorrecto. Autorización denegada.', 'error');
+      notify('NIP incorrecto. Autorización denegada.', 'error');
       return;
     }
 
@@ -538,6 +567,8 @@ export default function TableManager({ onLogout }) {
       await executeUnmerge(pendingAction.id);
     } else if (pendingAction?.type === 'delete_event') {
       await executeDeleteEvent(pendingAction.id);
+    } else if (pendingAction?.type === 'delete_reservation') {
+      await executeDeleteReservation(pendingAction.id);
     } else if (pendingAction?.type === 'reset_all') {
       setTables(INITIAL_TABLES);
       localStorage.setItem('casino_tables_data', JSON.stringify(INITIAL_TABLES));
@@ -1276,13 +1307,14 @@ export default function TableManager({ onLogout }) {
         </div>
       )}
 
-      {/* Modal Completo de Gestión de Eventos */}
+      {/* Modal Completo de Gestión de Eventos y Ventas */}
       <SalesReportModal
         isOpen={isReportModalOpen}
         onClose={() => setIsReportModalOpen(false)}
         activeEvent={activeEvent}
         events={events}
         tables={tables}
+        onDeleteReservation={requestDeleteReservation}
       />
 
       <EventsModal
