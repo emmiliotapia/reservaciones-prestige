@@ -53,6 +53,7 @@ def init_db():
     SQLModel.metadata.create_all(engine)
     from app.models.models import TableNode, TableStatus
     
+    from datetime import datetime, timezone
     with Session(engine) as session:
         existing = session.exec(select(TableNode)).all()
         if not existing:
@@ -62,7 +63,8 @@ def init_db():
                     pos_x=t_data["pos_x"],
                     pos_y=t_data["pos_y"],
                     capacity=t_data["capacity"],
-                    status=TableStatus.DISPONIBLE
+                    status=TableStatus.DISPONIBLE,
+                    updated_at=datetime.now(timezone.utc)
                 )
                 session.add(table)
             session.commit()
