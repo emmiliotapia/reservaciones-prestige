@@ -49,10 +49,13 @@ def get_all_tables(
             t_dict["event_id"] = res.event_id
             t_dict["event_name"] = res.event_name
         else:
-            # Si se está filtrando por evento y esta mesa no pertenece a este evento, se muestra DISPONIBLE y sin group_id residual
+            # Si se está filtrando por evento y no tiene reserva activa en este evento:
             if event_id is not None or event_name is not None:
                 t_dict["status"] = TableStatus.DISPONIBLE
-                t_dict["group_id"] = None
+            else:
+                t_dict["status"] = t.status
+            # MANTENER el group_id físico de la mesa para que no se separen
+            t_dict["group_id"] = t.group_id
             t_dict["customer_name"] = None
             t_dict["phone"] = None
             t_dict["total_paid"] = None

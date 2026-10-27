@@ -84,15 +84,13 @@ const INITIAL_TABLES = [
 export default function TableManager({ onLogout }) {
   const containerRef = useRef(null);
 
-  // Sistema de Gestión de Eventos con persistencia (Limpiando eventos anteriores)
+  // Sistema de Gestión de Eventos con persistencia en PostgreSQL
   const [events, setEvents] = useState(() => {
     try {
       const saved = localStorage.getItem('casino_events_data');
       if (saved) {
         const parsed = JSON.parse(saved);
-        // Filtrar para mantener solo eventos deseados
-        const prestigeOnly = parsed.filter((e) => e.name.toLowerCase().includes('prestige'));
-        if (prestigeOnly.length > 0) return prestigeOnly;
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
       return INITIAL_EVENTS;
     } catch {
@@ -360,6 +358,19 @@ export default function TableManager({ onLogout }) {
               : t
           )
         );
+
+        // Persistir unión en PostgreSQL
+        const dbId1 = table.db_id || parseInt(table.id.replace(/\D/g, ''), 10);
+        const dbId2 = targetTable.db_id || parseInt(targetTable.id.replace(/\D/g, ''), 10);
+        if (dbId1 && dbId2) {
+          mergeTables([dbId1, dbId2]).then(() => {
+            updateTablePosition(dbId1, avgX, avgY);
+            updateTablePosition(dbId2, avgX, avgY);
+          }).catch((err) => {
+            console.warn("Error persistiendo unión por arrastre:", err.message);
+          });
+        }
+
         notify(`¡Mesas ${table.id} y ${targetTable.id} unidas con Drag & Drop en Mesa Doble (6 personas)!`, 'success');
         return;
       }
@@ -394,15 +405,17 @@ export default function TableManager({ onLogout }) {
         notify('Solo puedes juntar mesas disponibles', 'warning');
         return;
       }
+      // Si la mesa seleccionada es una mesa combinada sintética (ej. "M-01 + M-02"), tomar todas las mesas individuales involucradas
+      const idsToAdd = table.id.includes(' + ')
+        ? table.id.split(' + ').map((s) => s.trim())
+        : [table.id];
+
       setSelectedTableIds((prev) => {
-        if (prev.includes(table.id)) {
-          return prev.filter((id) => id !== table.id);
+        const allPresent = idsToAdd.every((id) => prev.includes(id));
+        if (allPresent) {
+          return prev.filter((id) => !idsToAdd.includes(id));
         }
-        if (prev.length >= 2) {
-          notify('Solo puedes unir 2 mesas a la vez', 'warning');
-          return [prev[1], table.id];
-        }
-        return [...prev, table.id];
+        return Array.from(new Set([...prev, ...idsToAdd]));
       });
       return;
     }
@@ -411,7 +424,7 @@ export default function TableManager({ onLogout }) {
     setSidebarTable(table);
     setIsSidebarOpen(true);
 
-    const defaultCapacity = table.group_id ? 6 : 4;
+    const defaultCapacity = table.group_id ? (table.party_size || 6) : 4;
     if (table.status === 'disponible') {
       setCustomerName('');
       setPhone('');
@@ -425,44 +438,45 @@ export default function TableManager({ onLogout }) {
     }
   };
 
-  // Juntar 2 Mesas en una Mesa Doble (6 personas)
+  // Juntar 2 o más Mesas (Capacidad: mesas * 2 + 2 o según cantidad)
   const handleMergeTables = async () => {
-    if (selectedTableIds.length !== 2) {
-      notify('Por favor selecciona 2 mesas en el mapa', 'warning');
+    if (selectedTableIds.length < 2) {
+      notify('Por favor selecciona al menos 2 mesas en el mapa', 'warning');
       return;
     }
-    const [id1, id2] = selectedTableIds;
-    const t1 = tables.find((t) => t.id === id1);
-    const t2 = tables.find((t) => t.id === id2);
-    if (!t1 || !t2) return;
+
+    const selectedTables = tables.filter((t) => selectedTableIds.includes(t.id));
+    if (selectedTables.length < 2) return;
 
     const newGroupId = `grp-${Date.now()}`;
-    const avgX = Math.round(((t1.x + t2.x) / 2) * 10) / 10;
-    const avgY = Math.round(((t1.y + t2.y) / 2) * 10) / 10;
+    const avgX = Math.round((selectedTables.reduce((acc, t) => acc + t.x, 0) / selectedTables.length) * 10) / 10;
+    const avgY = Math.round((selectedTables.reduce((acc, t) => acc + t.y, 0) / selectedTables.length) * 10) / 10;
 
     // Actualización optimista local
     setTables((prev) =>
       prev.map((t) =>
-        t.id === id1 || t.id === id2
+        selectedTableIds.includes(t.id)
           ? { ...t, group_id: newGroupId, x: avgX, y: avgY, orientation: 'horizontal' }
           : t
       )
     );
 
+    const mergedLabels = selectedTableIds.join(' + ');
     setSelectedTableIds([]);
     setIsJoinMode(false);
 
     // Persistir fusión en PostgreSQL del VPS
     try {
-      const dbIds = [
-        t1.db_id || parseInt(t1.id.replace(/\D/g, ''), 10),
-        t2.db_id || parseInt(t2.id.replace(/\D/g, ''), 10)
-      ];
+      const dbIds = selectedTables.map((t) => t.db_id || parseInt(t.id.replace(/\D/g, ''), 10));
       await mergeTables(dbIds);
-      notify(`¡Mesas ${id1} y ${id2} unidas en Mesa Doble (Capacidad: 6 personas)! Guardado en el VPS.`, 'success');
+      // Persistir también la posición unificada para que no salten
+      for (const id of dbIds) {
+        updateTablePosition(id, avgX, avgY).catch(() => {});
+      }
+      notify(`¡Mesas ${mergedLabels} unidas correctamente! Guardado en la base de datos.`, 'success');
     } catch (e) {
       console.warn("Fusión guardada localmente (VPS detalle):", e.message);
-      notify(`¡Mesas ${id1} y ${id2} unidas en Mesa Doble (Capacidad: 6 personas)!`, 'success');
+      notify(`¡Mesas ${mergedLabels} unidas!`, 'success');
     }
   };
 
@@ -754,14 +768,14 @@ export default function TableManager({ onLogout }) {
             <span>{isJoinMode ? 'Cancelar Unión' : 'Unir Mesas (o arrastra una sobre otra)'}</span>
           </button>
 
-          {/* Confirmar Fusión cuando hay 2 seleccionadas */}
-          {selectedTableIds.length === 2 && (
+          {/* Confirmar Fusión cuando hay 2 o más seleccionadas */}
+          {selectedTableIds.length >= 2 && (
             <button
               onClick={handleMergeTables}
               className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 text-white font-bold shadow-lg hover:bg-indigo-500 transition-all animate-bounce"
             >
               <Check className="w-4 h-4" />
-              <span>Confirmar Mesa Doble ({selectedTableIds.join(' + ')})</span>
+              <span>Confirmar Unión ({selectedTableIds.join(' + ')})</span>
             </button>
           )}
 
