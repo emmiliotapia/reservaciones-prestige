@@ -171,7 +171,8 @@ export default function TableManager({ onLogout }) {
               total_paid: bt.total_paid ? Number(bt.total_paid) : 0,
               party_size: bt.party_size || bt.capacity || 4,
               event_name: bt.event_name || null,
-              event_id: bt.event_id || null
+              event_id: bt.event_id || null,
+              current_reservation_id: bt.current_reservation_id || null
             };
           });
         });
@@ -350,6 +351,23 @@ export default function TableManager({ onLogout }) {
   // Ejecución Autorizada: Eliminar Reservación y Liberar Mesas en PostgreSQL
   const executeDeleteReservation = async (reservationId) => {
     try {
+      // Liberación optimista inmediata en la UI
+      setTables((prev) =>
+        prev.map((t) => {
+          if (t.current_reservation_id === reservationId) {
+            return {
+              ...t,
+              status: 'disponible',
+              customer_name: null,
+              phone: null,
+              total_paid: 0,
+              current_reservation_id: null
+            };
+          }
+          return t;
+        })
+      );
+
       await deleteReservationApi(reservationId);
       // Recargar mesas del backend inmediatamente
       await loadTablesFromBackend(activeEvent);

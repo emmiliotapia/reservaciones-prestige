@@ -119,7 +119,7 @@ def delete_reservation(reservation_id: int, session: Session = Depends(get_sessi
     if not res:
         raise HTTPException(status_code=404, detail="Reservación no encontrada")
     
-    # Liberar las mesas asociadas a esta reservación
+    # Obtener todas las mesas vinculadas por current_reservation_id o group_id
     tables = session.exec(
         select(TableNode).where(
             (TableNode.current_reservation_id == reservation_id) |
@@ -127,9 +127,21 @@ def delete_reservation(reservation_id: int, session: Session = Depends(get_sessi
         )
     ).all()
 
+    # Si hubo ticket log asociado, obtener también las etiquetas de las mesas impresas
+    ticket = session.exec(select(TicketLog).where(TicketLog.reservation_id == reservation_id)).first()
+    if ticket and ticket.payload_snapshot and "tables" in ticket.payload_snapshot:
+        ticket_labels = ticket.payload_snapshot.get("tables", [])
+        if ticket_labels:
+            ticket_tables = session.exec(select(TableNode).where(TableNode.label.in_(ticket_labels))).all()
+            all_tables_dict = {t.id: t for t in tables}
+            for tt in ticket_tables:
+                all_tables_dict[tt.id] = tt
+            tables = list(all_tables_dict.values())
+
     for t in tables:
         t.status = TableStatus.DISPONIBLE
-        t.current_reservation_id = None
+        if t.current_reservation_id == reservation_id:
+            t.current_reservation_id = None
         t.updated_at = datetime.utcnow()
         session.add(t)
 
