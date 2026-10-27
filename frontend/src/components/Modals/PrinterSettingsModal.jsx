@@ -214,15 +214,25 @@ export default function PrinterSettingsModal({ isOpen, onClose, onTestPrint }) {
 
                 {/* Opción 2: QZ Tray */}
                 <div className="bg-slate-900/70 p-3 rounded-xl border border-slate-800/80 space-y-1.5">
-                  <div className="font-bold text-slate-200 flex items-center gap-1.5">
-                    <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>Opción B: Daemon QZ Tray</span>
+                  <div className="font-bold text-slate-200 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
+                      QZ Tray Activo (Puerto 8181)
+                    </span>
+                    <a
+                      href="https://localhost:8181"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-[10px] text-indigo-400 hover:text-indigo-300 underline font-bold"
+                    >
+                      Abrir https://localhost:8181
+                    </a>
                   </div>
                   <p className="text-[11px] text-slate-400 leading-normal">
-                    Instala la aplicación gratuita <strong>QZ Tray</strong> en tu PC Windows para corte físico ESC/POS por hardware directo vía WebSocket.
+                    QZ Tray ya está corriendo en tu PC. Al estar en HTTPS, da clic en el enlace de arriba una sola vez y selecciona <strong>Avanzado &gt; Continuar a localhost</strong> para autorizar el certificado de seguridad de QZ Tray.
                   </p>
                   <p className="text-[10px] text-indigo-300">
-                    Una vez abierta en tu PC, el indicador de arriba cambiará automáticamente a verde.
+                    Luego regresa y presiona <strong>Reconectar</strong> arriba para que cambie a verde.
                   </p>
                 </div>
               </div>

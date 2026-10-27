@@ -31,12 +31,12 @@ class QZService {
           const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
           
           try {
-            // Primer intento: según el protocolo actual (si es https, intentar wss://localhost:8283)
+            // Primer intento: según el protocolo actual
             await this.qz.websocket.connect({
               host: 'localhost',
               usingSecure: isHttps,
               port: {
-                secure: [8283, 8284],
+                secure: [8181, 8283, 8284],
                 insecure: [8182, 8183]
               },
               keepAlive: 60,
@@ -51,7 +51,7 @@ class QZService {
                 host: 'localhost',
                 usingSecure: !isHttps,
                 port: {
-                  secure: [8283, 8284],
+                  secure: [8181, 8283, 8284],
                   insecure: [8182, 8183]
                 },
                 keepAlive: 60,
