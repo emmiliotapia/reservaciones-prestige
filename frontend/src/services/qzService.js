@@ -8,11 +8,14 @@ class QZService {
   constructor() {
     this.connected = false;
     this.qz = null;
-    this.printerName = null;
+    this.printerName = localStorage.getItem('pos_selected_printer') || null;
     this.initPromise = null;
   }
 
-  async init() {
+  async init(forceReconnect = false) {
+    if (forceReconnect) {
+      this.initPromise = null;
+    }
     if (this.initPromise) return this.initPromise;
 
     this.initPromise = (async () => {
@@ -39,11 +42,15 @@ class QZService {
         this.connected = true;
         console.log("QZ Tray conectado exitosamente via ws://localhost:8182");
 
-        // Intentar detectar impresora predeterminada
-        try {
-          this.printerName = await this.qz.printers.getDefault();
-        } catch {
-          this.printerName = "Generic / Text Only";
+        // Si no hay impresora seleccionada por el usuario en localStorage, buscar la default
+        if (!this.printerName) {
+          try {
+            const defPrinter = await this.qz.printers.getDefault();
+            this.printerName = defPrinter || "POS-Printer";
+            localStorage.setItem('pos_selected_printer', this.printerName);
+          } catch {
+            this.printerName = "Generic / Text Only";
+          }
         }
 
         return true;
@@ -55,6 +62,30 @@ class QZService {
     })();
 
     return this.initPromise;
+  }
+
+  async getPrintersList() {
+    try {
+      const ready = await this.init();
+      if (!ready || !this.qz) return [];
+      return await this.qz.printers.find();
+    } catch (e) {
+      console.warn("No se pudieron listar impresoras:", e);
+      return [];
+    }
+  }
+
+  setPrinter(name) {
+    this.printerName = name;
+    localStorage.setItem('pos_selected_printer', name);
+  }
+
+  getSavedPrinter() {
+    return this.printerName || localStorage.getItem('pos_selected_printer') || null;
+  }
+
+  isConnected() {
+    return this.connected && this.qz && this.qz.websocket && this.qz.websocket.isActive();
   }
 
   /**

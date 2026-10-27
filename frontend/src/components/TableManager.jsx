@@ -22,11 +22,14 @@ import {
   ChevronDown,
   Lock,
   ShieldCheck,
-  KeyRound
+  KeyRound,
+  Settings,
+  RotateCcw
 } from 'lucide-react';
 import { qzService } from '../services/qzService';
 import EventsModal from './Modals/EventsModal';
 import SalesReportModal from './Modals/SalesReportModal';
+import PrinterSettingsModal from './Modals/PrinterSettingsModal';
 
 // NIP de Autorización del Gerente
 const MANAGER_PIN = '2026';
@@ -75,18 +78,70 @@ const INITIAL_TABLES = [
 export default function TableManager({ onLogout }) {
   const containerRef = useRef(null);
 
-  // Sistema de Gestión de Eventos
-  const [events, setEvents] = useState(INITIAL_EVENTS);
-  const [activeEventId, setActiveEventId] = useState(1);
+  // Sistema de Gestión de Eventos con persistencia
+  const [events, setEvents] = useState(() => {
+    try {
+      const saved = localStorage.getItem('casino_events_data');
+      return saved ? JSON.parse(saved) : INITIAL_EVENTS;
+    } catch {
+      return INITIAL_EVENTS;
+    }
+  });
+
+  const [activeEventId, setActiveEventId] = useState(() => {
+    try {
+      const saved = localStorage.getItem('casino_active_event_id');
+      return saved ? Number(saved) : 1;
+    } catch {
+      return 1;
+    }
+  });
+
   const [isEventsModalOpen, setIsEventsModalOpen] = useState(false);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const [isPrinterModalOpen, setIsPrinterModalOpen] = useState(false);
+
+  // Guardar eventos cuando cambien
+  useEffect(() => {
+    try {
+      localStorage.setItem('casino_events_data', JSON.stringify(events));
+    } catch (e) {
+      console.warn('Error guardando eventos:', e);
+    }
+  }, [events]);
+
+  // Guardar evento activo
+  useEffect(() => {
+    try {
+      localStorage.setItem('casino_active_event_id', String(activeEventId));
+    } catch (e) {
+      console.warn('Error guardando activeEventId:', e);
+    }
+  }, [activeEventId]);
 
   // Evento Activo Seleccionado
-  const activeEvent = events.find((e) => e.id === activeEventId) || events[0];
+  const activeEvent = events.find((e) => e.id === activeEventId) || events[0] || INITIAL_EVENTS[0];
   const pricePerPerson = activeEvent?.price_per_person || 500;
 
-  // Estado de Mesas
-  const [tables, setTables] = useState(INITIAL_TABLES);
+  // Estado de Mesas con persistencia en localStorage
+  const [tables, setTables] = useState(() => {
+    try {
+      const saved = localStorage.getItem('casino_tables_data');
+      return saved ? JSON.parse(saved) : INITIAL_TABLES;
+    } catch {
+      return INITIAL_TABLES;
+    }
+  });
+
+  // Guardar mesas inmediatamente al cambiar
+  useEffect(() => {
+    try {
+      localStorage.setItem('casino_tables_data', JSON.stringify(tables));
+    } catch (e) {
+      console.warn('Error guardando mesas:', e);
+    }
+  }, [tables]);
+
   const [selectedTableIds, setSelectedTableIds] = useState([]);
   const [isJoinMode, setIsJoinMode] = useState(false);
 
@@ -107,7 +162,19 @@ export default function TableManager({ onLogout }) {
   const [isPinModalOpen, setIsPinModalOpen] = useState(false);
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState(false);
-  const [pendingAction, setPendingAction] = useState(null); // { type: 'release' | 'unmerge', id: string, name: string }
+  const [pendingAction, setPendingAction] = useState(null); // { type: 'release' | 'unmerge' | 'reset_all', id: string, name: string }
+
+  // Función para reiniciar mesas a valores de fábrica bajo PIN de Gerente
+  const handleResetTablesRequest = () => {
+    setPendingAction({
+      type: 'reset_all',
+      id: 'ALL',
+      name: 'Reiniciar todas las mesas a estado inicial de fábrica'
+    });
+    setPinInput('');
+    setPinError(false);
+    setIsPinModalOpen(true);
+  };
 
   const notify = (msg, type = 'info') => {
     setNotification({ msg, type });
@@ -305,6 +372,10 @@ export default function TableManager({ onLogout }) {
       executeReleaseTable(pendingAction.id);
     } else if (pendingAction?.type === 'unmerge') {
       executeUnmerge(pendingAction.id);
+    } else if (pendingAction?.type === 'reset_all') {
+      setTables(INITIAL_TABLES);
+      localStorage.setItem('casino_tables_data', JSON.stringify(INITIAL_TABLES));
+      notify('Plano y mesas restaurados exitosamente al estado de fábrica.', 'success');
     }
 
     setIsPinModalOpen(false);
@@ -515,28 +586,20 @@ export default function TableManager({ onLogout }) {
             </button>
 
             <button
-              onClick={async () => {
-                const testPayload = {
-                  ticket_id: `TEST-${Math.floor(1000 + Math.random() * 9000)}`,
-                  customer_name: 'PRUEBA IMPRESIÓN',
-                  phone: '000-000-0000',
-                  party_size: 4,
-                  total_paid: 2000,
-                  event_name: activeEvent.name,
-                  event_date: activeEvent.event_date,
-                  event_time: activeEvent.event_time,
-                  tables: ['M-TEST'],
-                  printed_at: new Date().toLocaleTimeString()
-                };
-                notify('Enviando doble ticket con corte a la impresora...', 'info');
-                await qzService.printDoubleTicket(testPayload);
-                notify('¡Prueba enviada! (Copia Sala + Corte + Copia Cliente + Corte)', 'success');
-              }}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[11px] font-semibold text-slate-200 transition-all"
-              title="Probar emisión de doble ticket con corte independiente"
+              onClick={() => setIsPrinterModalOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-750 border border-slate-750 hover:border-indigo-500/40 text-[11px] font-semibold text-slate-200 transition-all group"
+              title="Módulo de conexión de impresora POS y supresión de vista previa"
             >
-              <Printer className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Probar Impresión (2x)</span>
+              <Printer className="w-3.5 h-3.5 text-indigo-400 group-hover:text-indigo-300" />
+              <span>Impresora POS</span>
+            </button>
+
+            <button
+              onClick={handleResetTablesRequest}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 border border-slate-750 text-[11px] font-semibold text-slate-400 hover:text-slate-200 transition-all"
+              title="Reiniciar plano y mesas al estado de fábrica (Requiere PIN)"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
             </button>
 
             {onLogout && (
@@ -1006,6 +1069,29 @@ export default function TableManager({ onLogout }) {
         activeEventId={activeEventId}
         onSelectEvent={handleSelectEvent}
         onCreateEvent={handleCreateEvent}
+      />
+
+      {/* Módulo de Configuración de Impresora POS */}
+      <PrinterSettingsModal
+        isOpen={isPrinterModalOpen}
+        onClose={() => setIsPrinterModalOpen(false)}
+        onTestPrint={async () => {
+          const testPayload = {
+            ticket_id: `TEST-${Math.floor(1000 + Math.random() * 9000)}`,
+            customer_name: 'PRUEBA IMPRESIÓN',
+            phone: '000-000-0000',
+            party_size: 4,
+            total_paid: 2000,
+            event_name: activeEvent.name,
+            event_date: activeEvent.event_date,
+            event_time: activeEvent.event_time,
+            tables: ['M-TEST'],
+            printed_at: new Date().toLocaleTimeString()
+          };
+          notify('Enviando doble ticket a impresora...', 'info');
+          await qzService.printDoubleTicket(testPayload);
+          notify('¡Impresión de prueba completada (Doble comprobante)!', 'success');
+        }}
       />
 
       {/* Floating Notification */}
