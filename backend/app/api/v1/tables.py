@@ -151,7 +151,6 @@ def update_table_status(table_id: int, payload: TableStatusUpdate, session: Sess
     table.status = payload.status
     if payload.status == TableStatus.DISPONIBLE:
         table.current_reservation_id = None
-        table.group_id = None
         
     table.updated_at = datetime.utcnow()
     session.add(table)

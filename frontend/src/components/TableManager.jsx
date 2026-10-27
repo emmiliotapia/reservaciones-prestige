@@ -432,11 +432,19 @@ export default function TableManager({ onLogout }) {
     );
 
     // Persistir posición en PostgreSQL del VPS
-    const dbId = table.db_id || parseInt(table.id.replace(/\D/g, ''), 10);
-    if (dbId) {
-      updateTablePosition(dbId, newXPercent, newYPercent).catch((err) => {
-        console.warn("No se pudo persistir posición en VPS:", err.message);
+    if (table.group_id) {
+      const groupMembers = tables.filter((t) => t.group_id === table.group_id);
+      groupMembers.forEach((m) => {
+        const id = m.db_id || parseInt(m.id.replace(/\D/g, ''), 10);
+        if (id) updateTablePosition(id, newXPercent, newYPercent).catch(() => {});
       });
+    } else {
+      const dbId = table.db_id || parseInt(table.id.replace(/\D/g, ''), 10);
+      if (dbId) {
+        updateTablePosition(dbId, newXPercent, newYPercent).catch((err) => {
+          console.warn("No se pudo persistir posición en VPS:", err.message);
+        });
+      }
     }
   };
 
@@ -607,6 +615,13 @@ export default function TableManager({ onLogout }) {
     try {
       const dbIds = merged.map((t) => t.db_id || parseInt(t.id.replace(/\D/g, ''), 10));
       await unmergeTables(dbIds);
+      // Persistir nuevas coordenadas separadas en la base de datos
+      merged.forEach((t) => {
+        const isFirst = t.id === merged[0].id;
+        const newX = isFirst ? Math.max(12, baseX - 6) : Math.min(88, baseX + 6);
+        const dbId = t.db_id || parseInt(t.id.replace(/\D/g, ''), 10);
+        if (dbId) updateTablePosition(dbId, newX, baseY).catch(() => {});
+      });
     } catch (e) {
       console.warn("Separación guardada localmente:", e.message);
     }
@@ -698,11 +713,11 @@ export default function TableManager({ onLogout }) {
     const target = tables.find((t) => t.id === tableId) || sidebarTable;
     const targetGroupId = target?.group_id;
 
-    // Actualización local
+    // Actualización local (libera disponibilidad y datos de cliente, pero preserva la unión si es mesa doble)
     setTables((prev) =>
       prev.map((t) =>
         t.id === tableId || (targetGroupId && t.group_id === targetGroupId)
-          ? { ...t, status: 'disponible', group_id: null, customer_name: null, phone: null, total_paid: 0 }
+          ? { ...t, status: 'disponible', customer_name: null, phone: null, total_paid: 0 }
           : t
       )
     );
@@ -884,8 +899,8 @@ export default function TableManager({ onLogout }) {
             if (groupTables.length < 2) return null;
             groupTables.forEach((t) => processedTableIds.add(t.id));
 
-            const avgX = (groupTables[0].x + groupTables[1].x) / 2;
-            const avgY = (groupTables[0].y + groupTables[1].y) / 2;
+            const avgX = Math.round((groupTables.reduce((acc, t) => acc + t.x, 0) / groupTables.length) * 10) / 10;
+            const avgY = Math.round((groupTables.reduce((acc, t) => acc + t.y, 0) / groupTables.length) * 10) / 10;
             const isGroupOccupied = groupTables.some((t) => t.status === 'ocupada');
             const isGroupReserved = groupTables.some((t) => t.status === 'reservada');
             const status = isGroupOccupied ? 'ocupada' : isGroupReserved ? 'reservada' : 'disponible';
