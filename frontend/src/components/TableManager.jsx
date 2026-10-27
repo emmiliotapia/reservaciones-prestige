@@ -4,6 +4,8 @@ import {
   Calendar,
   Minimize2,
   Maximize2,
+  FileSpreadsheet,
+  LogOut,
   DollarSign,
   Printer,
   RotateCw,
@@ -24,12 +26,16 @@ import {
 } from 'lucide-react';
 import { qzService } from '../services/qzService';
 import EventsModal from './Modals/EventsModal';
+import SalesReportModal from './Modals/SalesReportModal';
 
 // NIP de Autorización del Gerente
 const MANAGER_PIN = '2026';
 
 // Lista de eventos iniciales
 const INITIAL_EVENTS = [
+  { id: 1, name: 'Noche de Casino VIP', price_per_person: 500, event_date: '2026-10-23', event_time: '20:00' },
+  { id: 2, name: 'Torneo Texas Holdem Clásico', price_per_person: 750, event_date: '2026-10-30', event_time: '21:00' },
+  { id: 3, name: 'Gala Fin de Año Casino', price_per_person: 1200, event_date: '2026-12-31', event_time: '22:00' },
   { id: 1, name: 'Noche de Casino VIP', price_per_person: 500, event_date: '2026-10-23' },
   { id: 2, name: 'Torneo Texas Holdem Clásico', price_per_person: 750, event_date: '2026-10-30' },
   { id: 3, name: 'Gala Fin de Año Casino', price_per_person: 1200, event_date: '2026-12-31' }
@@ -66,13 +72,14 @@ const INITIAL_TABLES = [
   { id: 'M-18', x: 70, y: 78, status: 'disponible', orientation: 'horizontal', group_id: null }
 ];
 
-export default function TableManager() {
+export default function TableManager({ onLogout }) {
   const containerRef = useRef(null);
 
   // Sistema de Gestión de Eventos
   const [events, setEvents] = useState(INITIAL_EVENTS);
   const [activeEventId, setActiveEventId] = useState(1);
   const [isEventsModalOpen, setIsEventsModalOpen] = useState(false);
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
 
   // Evento Activo Seleccionado
   const activeEvent = events.find((e) => e.id === activeEventId) || events[0];
@@ -361,6 +368,8 @@ export default function TableManager() {
         party_size: partySize,
         total_paid: Number(monto),
         event_name: activeEvent.name,
+        event_date: activeEvent.event_date,
+        event_time: activeEvent.event_time,
         time_scheduled: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         tables: [tableId],
         printed_at: new Date().toLocaleTimeString()
@@ -497,6 +506,15 @@ export default function TableManager() {
 
           <div className="flex items-center gap-2">
             <button
+              onClick={() => setIsReportModalOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-[11px] transition-all shadow-sm"
+              title="Ver métricas de ventas y descargar reporte en Excel"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              <span>Reporte de Ventas</span>
+            </button>
+
+            <button
               onClick={async () => {
                 const testPayload = {
                   ticket_id: `TEST-${Math.floor(1000 + Math.random() * 9000)}`,
@@ -505,19 +523,32 @@ export default function TableManager() {
                   party_size: 4,
                   total_paid: 2000,
                   event_name: activeEvent.name,
+                  event_date: activeEvent.event_date,
+                  event_time: activeEvent.event_time,
                   tables: ['M-TEST'],
                   printed_at: new Date().toLocaleTimeString()
                 };
-                notify('Enviando doble ticket de prueba a la impresora...', 'info');
+                notify('Enviando doble ticket con corte a la impresora...', 'info');
                 await qzService.printDoubleTicket(testPayload);
-                notify('¡Prueba enviada! (Copia Sala + Copia Cliente)', 'success');
+                notify('¡Prueba enviada! (Copia Sala + Corte + Copia Cliente + Corte)', 'success');
               }}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[11px] font-semibold text-slate-200 transition-all"
-              title="Probar emisión de doble ticket ahora mismo"
+              title="Probar emisión de doble ticket con corte independiente"
             >
               <Printer className="w-3.5 h-3.5 text-emerald-400" />
               <span>Probar Impresión (2x)</span>
             </button>
+
+            {onLogout && (
+              <button
+                onClick={onLogout}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 text-[11px] font-bold transition-all ml-1"
+                title="Cerrar sesión de Marketing (mkt)"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span>Salir</span>
+              </button>
+            )}
           </div>
         </div>
       </header>
@@ -960,6 +991,14 @@ export default function TableManager() {
       )}
 
       {/* Modal Completo de Gestión de Eventos */}
+      <SalesReportModal
+        isOpen={isReportModalOpen}
+        onClose={() => setIsReportModalOpen(false)}
+        activeEvent={activeEvent}
+        events={events}
+        tables={tables}
+      />
+
       <EventsModal
         isOpen={isEventsModalOpen}
         onClose={() => setIsEventsModalOpen(false)}
