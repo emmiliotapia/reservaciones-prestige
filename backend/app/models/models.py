@@ -19,6 +19,7 @@ class Event(SQLModel, table=True):
     name: str = Field(index=True, nullable=False)
     price_per_person: float = Field(default=500.0) # Precio por persona
     event_date: str = Field(default="2026-11-15") # Fecha del evento YYYY-MM-DD
+    event_time: Optional[str] = Field(default="20:00") # Hora del evento HH:MM
     active: bool = Field(default=True)
     created_at: NaiveDatetime = Field(default_factory=datetime.utcnow)
 

@@ -18,6 +18,30 @@ export async function fetchReservations(activeOnly = true) {
   return res.json();
 }
 
+export async function fetchEvents() {
+  const res = await fetch(`${API_BASE}/events`);
+  if (!res.ok) throw new Error('Error al obtener lista de eventos');
+  return res.json();
+}
+
+export async function createEventApi(eventData) {
+  const res = await fetch(`${API_BASE}/events`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(eventData)
+  });
+  if (!res.ok) throw new Error('Error al registrar evento en el servidor');
+  return res.json();
+}
+
+export async function deleteEventApi(eventId) {
+  const res = await fetch(`${API_BASE}/events/${eventId}`, {
+    method: 'DELETE'
+  });
+  if (!res.ok) throw new Error('Error al eliminar evento en el servidor');
+  return res.json();
+}
+
 export async function mergeTables(tableIds) {
   const res = await fetch(`${API_BASE}/tables/merge`, {
     method: 'POST',

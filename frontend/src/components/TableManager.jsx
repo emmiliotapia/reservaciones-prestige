@@ -33,7 +33,10 @@ import {
   updateTablePosition,
   updateTableStatus,
   mergeTables,
-  unmergeTables
+  unmergeTables,
+  fetchEvents,
+  createEventApi,
+  deleteEventApi
 } from '../services/api';
 import EventsModal from './Modals/EventsModal';
 import SalesReportModal from './Modals/SalesReportModal';
@@ -243,6 +246,25 @@ export default function TableManager({ onLogout }) {
     }
   }, [partySize, pricePerPerson, sidebarTable]);
 
+  // Cargar eventos desde PostgreSQL del VPS
+  const loadEventsFromBackend = async () => {
+    try {
+      const serverEvents = await fetchEvents();
+      if (Array.isArray(serverEvents) && serverEvents.length > 0) {
+        setEvents(serverEvents);
+        if (!serverEvents.some((e) => e.id === activeEventId)) {
+          setActiveEventId(serverEvents[0].id);
+        }
+      }
+    } catch (e) {
+      console.warn("Usando eventos locales:", e.message);
+    }
+  };
+
+  useEffect(() => {
+    loadEventsFromBackend();
+  }, []);
+
   // Selección de Evento
   const handleSelectEvent = (id) => {
     setActiveEventId(id);
@@ -254,19 +276,39 @@ export default function TableManager({ onLogout }) {
     setIsEventsModalOpen(false);
   };
 
-  // Crear Nuevo Evento
-  const handleCreateEvent = (newEvent) => {
-    setEvents((prev) => [newEvent, ...prev]);
-    setActiveEventId(newEvent.id);
-    loadTablesFromBackend(newEvent);
-    notify(`Nuevo evento creado: ${newEvent.name}`, 'success');
+  // Crear Nuevo Evento en PostgreSQL
+  const handleCreateEvent = async (newEventData) => {
+    try {
+      const created = await createEventApi({
+        name: newEventData.name,
+        price_per_person: newEventData.price_per_person,
+        event_date: newEventData.event_date,
+        event_time: newEventData.event_time || "20:00"
+      });
+      setEvents((prev) => [created, ...prev]);
+      setActiveEventId(created.id);
+      loadTablesFromBackend(created);
+      notify(`Nuevo evento guardado en el servidor: ${created.name}`, 'success');
+    } catch (e) {
+      // Fallback local
+      const localEv = { ...newEventData, id: Date.now() };
+      setEvents((prev) => [localEv, ...prev]);
+      setActiveEventId(localEv.id);
+      loadTablesFromBackend(localEv);
+      notify(`Nuevo evento creado: ${localEv.name}`, 'success');
+    }
   };
 
-  // Eliminar Evento
-  const handleDeleteEvent = (idToDelete) => {
+  // Eliminar Evento en PostgreSQL
+  const handleDeleteEvent = async (idToDelete) => {
     if (events.length <= 1) {
       notify('Debe existir al menos un evento activo', 'warning');
       return;
+    }
+    try {
+      await deleteEventApi(idToDelete);
+    } catch (e) {
+      console.warn("Eliminado localmente:", e.message);
     }
     const remaining = events.filter((e) => e.id !== idToDelete);
     setEvents(remaining);

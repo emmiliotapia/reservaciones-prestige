@@ -83,5 +83,24 @@ class AnalyticsSummary(BaseModel):
     active_reservations: int
     table_occupancy_rate: float
     status_breakdown: Dict[str, int]
+
+# Event Schemas
+class EventCreate(BaseModel):
+    name: str
+    price_per_person: float = 500.0
+    event_date: str = "2026-11-15"
+    event_time: Optional[str] = "20:00"
+
+class EventRead(BaseModel):
+    id: int
+    name: str
+    price_per_person: float
+    event_date: str
+    event_time: Optional[str] = "20:00"
+    active: bool
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
     hourly_distribution: Dict[str, int]
     recent_tickets: List[Dict[str, Any]]

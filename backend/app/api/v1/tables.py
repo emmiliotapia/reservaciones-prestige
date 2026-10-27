@@ -41,6 +41,7 @@ def get_all_tables(
 
         if res:
             t_dict["status"] = t.status
+            t_dict["group_id"] = t.group_id
             t_dict["customer_name"] = res.customer_name
             t_dict["phone"] = res.phone
             t_dict["total_paid"] = res.total_paid
@@ -48,9 +49,10 @@ def get_all_tables(
             t_dict["event_id"] = res.event_id
             t_dict["event_name"] = res.event_name
         else:
-            # Si se está filtrando por evento y esta mesa no pertenece a este evento, se muestra DISPONIBLE
+            # Si se está filtrando por evento y esta mesa no pertenece a este evento, se muestra DISPONIBLE y sin group_id residual
             if event_id is not None or event_name is not None:
                 t_dict["status"] = TableStatus.DISPONIBLE
+                t_dict["group_id"] = None
             t_dict["customer_name"] = None
             t_dict["phone"] = None
             t_dict["total_paid"] = None
@@ -72,14 +74,6 @@ def merge_tables(payload: TableMergeRequest, session: Session = Depends(get_sess
     if len(tables) != len(payload.table_ids):
         raise HTTPException(status_code=404, detail="Una o más mesas especificadas no existen")
     
-    # Check for concurrency collision / occupied status
-    for t in tables:
-        if t.status == TableStatus.OCUPADA:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"Conflicto de concurrencia: La mesa {t.label} ya está ocupada por otra operación."
-            )
-
     # Generate unified group_id
     new_group_id = uuid.uuid4()
     for t in tables:

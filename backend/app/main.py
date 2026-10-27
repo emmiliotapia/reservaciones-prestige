@@ -5,6 +5,7 @@ from app.core.database import init_db
 from app.api.v1.tables import router as tables_router
 from app.api.v1.reservations import router as reservations_router
 from app.api.v1.analytics import router as analytics_router
+from app.api.v1.events import router as events_router
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -33,6 +34,7 @@ def on_startup():
 app.include_router(tables_router, prefix=settings.API_V1_STR)
 app.include_router(reservations_router, prefix=settings.API_V1_STR)
 app.include_router(analytics_router, prefix=settings.API_V1_STR)
+app.include_router(events_router, prefix=settings.API_V1_STR)
 
 @app.get("/health", tags=["health"])
 def health_check():
