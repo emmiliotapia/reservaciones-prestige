@@ -28,15 +28,38 @@ class QZService {
         this.qz.security.setSignaturePromise(() => Promise.resolve(""));
 
         if (!this.qz.websocket.isActive()) {
-          await this.qz.websocket.connect({
-            host: 'localhost',
-            usingSecure: false,
-            port: {
-              secure: [8283, 8284],
-              insecure: [8182, 8183]
-            },
-            keepAlive: 60
-          });
+          const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
+          
+          try {
+            // Primer intento: según el protocolo actual (si es https, intentar wss://localhost:8283)
+            await this.qz.websocket.connect({
+              host: 'localhost',
+              usingSecure: isHttps,
+              port: {
+                secure: [8283, 8284],
+                insecure: [8182, 8183]
+              },
+              keepAlive: 60,
+              retries: 2,
+              delay: 1
+            });
+          } catch (e1) {
+            console.warn("Fallo intento inicial de websocket QZ Tray, probando modo alternativo:", e1.message);
+            // Segundo intento: alternar modo seguro/inseguro si el primero no respondió
+            if (!this.qz.websocket.isActive()) {
+              await this.qz.websocket.connect({
+                host: 'localhost',
+                usingSecure: !isHttps,
+                port: {
+                  secure: [8283, 8284],
+                  insecure: [8182, 8183]
+                },
+                keepAlive: 60,
+                retries: 1,
+                delay: 1
+              });
+            }
+          }
         }
 
         this.connected = true;

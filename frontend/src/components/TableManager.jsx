@@ -417,20 +417,29 @@ export default function TableManager({ onLogout }) {
     setIsPrinting(true);
     try {
       const tableId = sidebarTable.id;
+      const targetGroupId = sidebarTable.group_id;
+
       setTables((prev) =>
-        prev.map((t) =>
-          t.id === tableId || (t.group_id && t.group_id === sidebarTable.group_id)
-            ? {
-                ...t,
-                status: 'ocupada',
-                customer_name: customerName.trim(),
-                phone: phone.trim(),
-                party_size: partySize,
-                total_paid: Number(monto)
-              }
-            : t
-        )
+        prev.map((t) => {
+          const isMatch = t.id === tableId || (targetGroupId && t.group_id === targetGroupId);
+          if (isMatch) {
+            return {
+              ...t,
+              status: 'ocupada',
+              customer_name: customerName.trim(),
+              phone: phone.trim(),
+              party_size: partySize,
+              total_paid: Number(monto)
+            };
+          }
+          return t;
+        })
       );
+
+      // Identificar todas las mesas involucradas para el ticket
+      const involvedTableLabels = targetGroupId
+        ? tables.filter((t) => t.group_id === targetGroupId).map((t) => t.id)
+        : [tableId];
 
       const ticketPayload = {
         ticket_id: `TKT-${Math.floor(1000 + Math.random() * 9000)}`,
@@ -442,7 +451,7 @@ export default function TableManager({ onLogout }) {
         event_date: activeEvent.event_date,
         event_time: activeEvent.event_time,
         time_scheduled: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        tables: [tableId],
+        tables: involvedTableLabels,
         printed_at: new Date().toLocaleTimeString()
       };
 
@@ -636,8 +645,11 @@ export default function TableManager({ onLogout }) {
 
             const avgX = (groupTables[0].x + groupTables[1].x) / 2;
             const avgY = (groupTables[0].y + groupTables[1].y) / 2;
-            const orientation = groupTables[0].orientation || 'horizontal';
-            const status = groupTables[0].status || 'disponible';
+            const isGroupOccupied = groupTables.some((t) => t.status === 'ocupada');
+            const isGroupReserved = groupTables.some((t) => t.status === 'reservada');
+            const status = isGroupOccupied ? 'ocupada' : isGroupReserved ? 'reservada' : 'disponible';
+            const clientTable = groupTables.find((t) => t.customer_name) || groupTables[0];
+
             const isHorizontal = orientation === 'horizontal';
             const labels = groupTables.map((t) => t.id).join(' + ');
 
@@ -648,10 +660,10 @@ export default function TableManager({ onLogout }) {
               status,
               group_id: groupId,
               orientation,
-              party_size: groupTables[0].party_size || 6,
-              total_paid: groupTables[0].total_paid,
-              customer_name: groupTables[0].customer_name,
-              phone: groupTables[0].phone
+              party_size: clientTable.party_size || 6,
+              total_paid: clientTable.total_paid,
+              customer_name: clientTable.customer_name,
+              phone: clientTable.phone
             };
 
             const widthPercent = isHorizontal ? 18 : 9;
@@ -666,7 +678,7 @@ export default function TableManager({ onLogout }) {
                 dragMomentum={false}
                 dragSnapToOrigin={false}
                 onDragEnd={(e, info) => handleDragEnd(e, info, syntheticDoubleTable)}
-                onClick={() => handleTableClick(groupTables[0])}
+                onClick={() => handleTableClick(syntheticDoubleTable)}
                 style={{
                   position: 'absolute',
                   left: `${avgX - widthPercent / 2}%`,
